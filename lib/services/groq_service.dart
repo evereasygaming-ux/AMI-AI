@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/chat_message.dart';
 import '../models/screen_action.dart';
+import 'ami_system_prompt.dart';
 import 'gemini_service.dart' show GeminiException;
 
 class GroqService {
@@ -34,7 +35,7 @@ class GroqService {
       {
         'role': 'system',
         'content':
-            _systemPrompt(localeHint) +
+            AmiSystemPrompt.text +
             (enableScreenActions
                 ? '\nWhen the user explicitly requests a screen action, propose only one tap_at or type_text tool call. Never infer actions. The app will wait for explicit approval before execution.'
                 : ''),
@@ -171,15 +172,4 @@ class GroqService {
       },
     },
   ];
-
-  String _systemPrompt(String localeHint) {
-    final language = switch (localeHint) {
-      'bn-IN' => 'Reply in Bengali (Bangla) unless the user clearly uses another language.',
-      'en-IN' => 'Reply in natural Indian English unless the user uses another language.',
-      'en-US' =>
-        'Reply in natural English unless the user uses another language.',
-      _ => 'Reply in the same language the user is speaking or writing.',
-    };
-    return '''You are AMI — AI Multimodal Intelligence — a warm, sharp, slightly playful assistant on the user's Android phone. Keep voice replies short and human, usually 1-4 sentences. Be direct and useful. $language''';
-  }
 }

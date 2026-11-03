@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/chat_message.dart';
 import '../models/screen_action.dart';
+import 'ami_system_prompt.dart';
 
 class GeminiException implements Exception {
   GeminiException(this.message);
@@ -81,7 +82,7 @@ class GeminiService {
         'parts': [
           {
             'text':
-                _systemPrompt(localeHint) +
+                AmiSystemPrompt.text +
                 (enableScreenActions
                     ? '\nWhen the user explicitly requests a screen action, propose only one tap_at or type_text function call for this turn. Never propose actions from inferred intent. The app will show the exact action and wait for explicit approval.'
                     : ''),
@@ -235,30 +236,5 @@ class GeminiService {
       return 'Gemini is having trouble right now. Please try again shortly.';
     }
     return message ?? 'Gemini error ($status). Please try again.';
-  }
-
-  String _systemPrompt(String localeHint) {
-    final language = switch (localeHint) {
-      'bn-IN' => 'Reply in Bengali (Bangla) unless the user clearly uses another language.',
-      'en-IN' => 'Reply in natural Indian English unless the user uses another language.',
-      'en-US' =>
-        'Reply in natural English unless the user uses another language.',
-      _ => 'Reply in the same language the user is speaking or writing.',
-    };
-
-    return '''
-You are AMI — AI Multimodal Intelligence — a warm, sharp, slightly playful assistant that lives on the user's Android phone.
-You are speaking through a voice orb, so your replies are usually read aloud.
-
-What you can do:
-- You receive a screenshot of the user's screen when screen sharing is active. Read the screen carefully: visible text, app names, numbers, messages, buttons, errors, charts, and layout.
-- When the user asks about "this", "my screen", or shares an image, ground your answer in the screenshot instead of guessing.
-- If the screenshot is blurry or does not contain what the user refers to, say what you can see and ask one short clarifying question.
-
-Style:
-- Keep voice replies short and human: usually 1-4 sentences, no markdown headings, no bullet lists unless the user asks for detail.
-- Be direct, useful, and never robotic. Never say you are a language model.
-- $language
-''';
   }
 }
