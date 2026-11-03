@@ -6,7 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -15,12 +18,35 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val CHANNEL = "ami/screen"
+        private const val OVERLAY_CHANNEL = "ami/overlay"
         private const val REQUEST_PROJECTION = 7101
         private const val REQUEST_NOTIFICATIONS = 7102
+        const val EXTRA_ORB_ACTION = "ami_orb_action"
+        const val ORB_ACTION_READ_SCREEN = "read_screen"
     }
 
     private var screenChannel: MethodChannel? = null
+    private var overlayChannel: MethodChannel? = null
     private var pendingCaptureResult: MethodChannel.Result? = null
+    private var pendingOrbAction: String? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        pendingOrbAction = intent?.getStringExtra(EXTRA_ORB_ACTION)
+        super.onCreate(savedInstanceState)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val action = intent.getStringExtra(EXTRA_ORB_ACTION) ?: return
+        val channel = overlayChannel
+        if (channel != null) {
+            pendingOrbAction = null
+            channel.invokeMethod("orbTap", null)
+        } else {
+            pendingOrbAction = action
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -63,6 +89,62 @@ class MainActivity : FlutterActivity() {
                     result.success(bytes)
                 }
                 "isScreenCapturing" -> result.success(ScreenCaptureService.isRunning)
+                else -> result.notImplemented()
+            }
+        }
+
+        setupOverlayChannel(flutterEngine)
+    }
+
+    private fun setupOverlayChannel(flutterEngine: FlutterEngine) {
+        val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, OVERLAY_CHANNEL)
+        overlayChannel = channel
+
+        FloatingOrbService.tapListener = {
+            runOnUiThread {
+                overlayChannel?.invokeMethod("orbTap", null)
+            }
+        }
+
+        channel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isOverlayPermissionGranted" ->
+                    result.success(Settings.canDrawOverlays(this))
+                "requestOverlayPermission" -> {
+                    if (Settings.canDrawOverlays(this)) {
+                        result.success(true)
+                    } else {
+                        try {
+                            startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:$packageName")
+                                )
+                            )
+                            result.success(false)
+                        } catch (error: Throwable) {
+                            result.error("overlay_settings", error.message, null)
+                        }
+                    }
+                }
+                "startOverlay" -> {
+                    if (!Settings.canDrawOverlays(this)) {
+                        result.success(false)
+                    } else {
+                        FloatingOrbService.start(this)
+                        result.success(true)
+                    }
+                }
+                "stopOverlay" -> {
+                    FloatingOrbService.stop(this)
+                    result.success(true)
+                }
+                "isOverlayRunning" -> result.success(FloatingOrbService.isRunning)
+                "takeOrbAction" -> {
+                    val action = pendingOrbAction
+                    pendingOrbAction = null
+                    result.success(action)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -130,7 +212,11 @@ class MainActivity : FlutterActivity() {
         if (ScreenCaptureService.captureListener != null) {
             ScreenCaptureService.captureListener = null
         }
+        if (FloatingOrbService.tapListener != null) {
+            FloatingOrbService.tapListener = null
+        }
         screenChannel = null
+        overlayChannel = null
         super.onDestroy()
     }
 }

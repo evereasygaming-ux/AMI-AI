@@ -34,6 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late String _voiceLocale;
   late bool _autoSpeak;
   late bool _autoScreen;
+  late bool _floatingRobot;
   bool _obscure = true;
 
   @override
@@ -45,6 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _voiceLocale = settings.voiceLocale;
     _autoSpeak = settings.autoSpeak;
     _autoScreen = settings.autoScreen;
+    _floatingRobot = settings.floatingRobot;
   }
 
   @override
@@ -63,6 +65,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       voiceLocale: _voiceLocale,
       autoSpeak: _autoSpeak,
       autoScreen: _autoScreen,
+      floatingRobot: _floatingRobot,
     );
     await widget.controller.saveSettings(next);
     if (!mounted) return;
@@ -82,6 +85,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final text = data?.text?.trim();
     if (text == null || text.isEmpty) return;
     setState(() => _keyController.text = text);
+  }
+
+  Future<void> _toggleFloatingRobot(bool value) async {
+    setState(() => _floatingRobot = value);
+    final ok = await widget.controller.setFloatingRobot(value);
+    if (!mounted) return;
+    setState(() => _floatingRobot = widget.controller.settings.floatingRobot);
+    if (!ok && value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.controller.notice ?? 'Overlay permission is needed.',
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -289,6 +308,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'When screen context is on, every question includes a screenshot.',
                 value: _autoScreen,
                 onChanged: (value) => setState(() => _autoScreen = value),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _label('FLOATING ROBOT'),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: glassPanel(radius: 20),
+          child: Column(
+            children: [
+              _SwitchRow(
+                title: 'Floating robot',
+                subtitle:
+                    'A tiny 3D robot floats over other apps. Tap it to read your screen aloud.',
+                value: _floatingRobot,
+                onChanged: _toggleFloatingRobot,
+              ),
+              const Divider(height: 22),
+              const _PrivacyLine(
+                icon: Icons.layers_outlined,
+                text:
+                    'Needs the "Display over other apps" permission. Screen reading works while screen context is on.',
               ),
             ],
           ),

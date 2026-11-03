@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import 'models/chat_message.dart';
 import 'services/gemini_service.dart';
+import 'services/overlay_service.dart';
 import 'services/screen_capture_service.dart';
 import 'services/settings_service.dart';
 import 'services/voice_service.dart';
@@ -15,12 +16,15 @@ class AmiController extends ChangeNotifier {
     GeminiService? gemini,
     ScreenCaptureService? screen,
     VoiceService? voice,
+    OverlayService? overlay,
   })  : _settingsService = settingsService ?? SettingsService(),
         _gemini = gemini ?? GeminiService(),
         _screen = screen ?? ScreenCaptureService(),
-        _voice = voice ?? VoiceService() {
+        _voice = voice ?? VoiceService(),
+        _overlay = overlay ?? OverlayService() {
     _screen.isSharing.addListener(_onScreenChanged);
     _screen.onDelayedCaptureReady = _handleDelayedCapture;
+    _overlay.onOrbTap = _handleOrbTap;
     _voice.onSpeakingChanged = (speaking) {
       _isSpeaking = speaking;
       notifyListeners();
@@ -32,6 +36,7 @@ class AmiController extends ChangeNotifier {
   final GeminiService _gemini;
   final ScreenCaptureService _screen;
   final VoiceService _voice;
+  final OverlayService _overlay;
 
   AmiSettings settings = const AmiSettings();
   final List<ChatMessage> messages = [];
@@ -49,6 +54,7 @@ class AmiController extends ChangeNotifier {
 
   Timer? _countdownTimer;
   bool _voiceHandled = false;
+  bool _pendingOrbRead = false;
 
   bool get screenActive => _screen.isSharing.value;
   bool get hasApiKey => settings.hasApiKey;
@@ -72,9 +78,55 @@ class AmiController extends ChangeNotifier {
     if (messages.isEmpty) {
       messages.add(_welcomeMessage());
     }
+    final pendingAction = await _overlay.takePendingAction();
+    if (pendingAction == 'read_screen') _pendingOrbRead = true;
     booting = false;
     notifyListeners();
     unawaited(_voice.initializeTts());
+    if (settings.floatingRobot) {
+      unawaited(_overlay.start());
+    }
+    if (_pendingOrbRead) {
+      _pendingOrbRead = false;
+      unawaited(analyzeScreenNow());
+    }
+  }
+
+  void _handleOrbTap() {
+    if (booting) {
+      _pendingOrbRead = true;
+      return;
+    }
+    unawaited(analyzeScreenNow());
+  }
+
+  Future<bool> setFloatingRobot(bool enabled) async {
+    if (!enabled) {
+      await _overlay.stop();
+      settings = settings.copyWith(floatingRobot: false);
+      await _settingsService.save(settings);
+      notifyListeners();
+      return true;
+    }
+    final granted = await _overlay.isPermissionGranted();
+    if (!granted) {
+      await _overlay.requestPermission();
+      notice = 'Allow "Display over other apps" for AMI, then turn the '
+          'floating robot on again.';
+      notifyListeners();
+      return false;
+    }
+    final started = await _overlay.start();
+    if (!started) {
+      notice = 'The floating robot could not start. Check overlay permission.';
+      notifyListeners();
+      return false;
+    }
+    settings = settings.copyWith(floatingRobot: true);
+    await _settingsService.save(settings);
+    notice = null;
+    notifyListeners();
+    return true;
   }
 
   ChatMessage _welcomeMessage() => ChatMessage(
@@ -390,6 +442,14 @@ class AmiController extends ChangeNotifier {
 
   Future<void> refreshScreenState() async {
     await _screen.refresh();
+    if (settings.floatingRobot) {
+      unawaited(_overlay.start());
+    }
+    final action = await _overlay.takePendingAction();
+    if (action == 'read_screen') {
+      unawaited(analyzeScreenNow());
+      return;
+    }
     final pending = await _screen.takePendingCapture();
     if (pending != null) {
       unawaited(_consumePending(pending));
@@ -403,6 +463,7 @@ class AmiController extends ChangeNotifier {
     _countdownTimer?.cancel();
     _screen.isSharing.removeListener(_onScreenChanged);
     _screen.onDelayedCaptureReady = null;
+    _overlay.onOrbTap = null;
     _screen.dispose();
     _voice.dispose();
     super.dispose();

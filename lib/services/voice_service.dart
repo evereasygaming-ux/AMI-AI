@@ -17,6 +17,8 @@ class VoiceService {
   void Function(bool speaking)? onSpeakingChanged;
   void Function(bool listening)? onListeningChanged;
 
+  final Map<String, Map<String, String>> _voiceCache = {};
+
   bool _ttsReady = false;
   bool _sttReady = false;
   bool _listening = false;
@@ -58,8 +60,11 @@ class VoiceService {
   Future<bool> initializeTts() async {
     if (_ttsReady) return true;
     try {
+      try {
+        await _tts.setEngine('com.google.android.tts');
+      } catch (_) {}
       await _tts.awaitSpeakCompletion(true);
-      await _tts.setSpeechRate(0.48);
+      await _tts.setSpeechRate(0.5);
       await _tts.setPitch(1.0);
       await _tts.setVolume(1.0);
       _ttsReady = true;
@@ -131,10 +136,79 @@ class VoiceService {
       await _tts.stop();
       final language = await _resolveLanguage(text, localeId);
       await _tts.setLanguage(language);
+      await _applyBestVoice(language);
       await _tts.speak(text);
     } catch (_) {
       _setSpeaking(false);
     }
+  }
+
+  Future<void> _applyBestVoice(String language) async {
+    final cached = _voiceCache[language];
+    if (cached != null) {
+      try {
+        await _tts.setVoice(cached);
+      } catch (_) {}
+      return;
+    }
+    try {
+      final rawVoices = await _tts.getVoices;
+      if (rawVoices is! List) return;
+      final target = language.toLowerCase();
+      final base = target.split('-').first;
+      Map<String, String>? best;
+      var bestScore = -1;
+      for (final raw in rawVoices) {
+        if (raw is! Map) continue;
+        final voice = <String, String>{};
+        raw.forEach((key, value) {
+          if (key != null && value != null) voice['$key'] = '$value';
+        });
+        final locale = (voice['locale'] ?? '').toLowerCase();
+        if (locale != target &&
+            locale != base &&
+            !locale.startsWith('$base-')) {
+          continue;
+        }
+        final quality = voice['quality'] ?? '';
+        final features = (voice['features'] ?? '').toLowerCase();
+        final name = (voice['name'] ?? '').toLowerCase();
+        var score = switch (quality) {
+          'very high' => 60,
+          'high' => 45,
+          'normal' => 25,
+          'low' => 5,
+          'very low' => 0,
+          _ => 10,
+        };
+        if (voice['network_required'] == '1') score += 30;
+        if (name.contains('neural') || features.contains('neural')) {
+          score += 45;
+        }
+        if (name.contains('wavenet') || features.contains('wavenet')) {
+          score += 45;
+        }
+        if (name.contains('studio') || features.contains('studio')) {
+          score += 35;
+        }
+        if (features.contains('enhanced')) score += 20;
+        if (name.contains('network')) score += 15;
+        if (locale == target) score += 10;
+        if (score > bestScore) {
+          bestScore = score;
+          best = voice;
+        }
+      }
+      final name = best?['name'];
+      if (name != null && name.isNotEmpty) {
+        final selection = {
+          'name': name,
+          'locale': best?['locale'] ?? language,
+        };
+        await _tts.setVoice(selection);
+        _voiceCache[language] = selection;
+      }
+    } catch (_) {}
   }
 
   Future<String> _resolveLanguage(String text, String requested) async {

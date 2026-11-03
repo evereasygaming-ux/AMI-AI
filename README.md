@@ -9,6 +9,10 @@ Gemini.
 ## Features
 
 - Voice conversations with speech-to-text input and spoken replies.
+- Natural voice: automatically picks the best available neural/network voice
+  from Google Text-to-Speech for the selected language.
+- Floating 3D robot: a tiny animated robot overlays other apps. Tap it to read
+  the current screen aloud without leaving the app you are in.
 - Screen awareness: share your screen so AMI can read what is visible and answer
   questions about "this" or "my screen".
 - Quick delayed screen look with a countdown before capturing.
@@ -60,6 +64,19 @@ Then open **Settings**, paste your Gemini API key, choose a model, and start
 talking. Screen sharing and microphone permissions are requested by Android at
 runtime.
 
+### Floating robot
+
+In **Settings > FLOATING ROBOT**, turn on **Floating robot**. Android will ask
+for the **Display over other apps** permission. Once granted, turn the switch on
+again if needed. The robot then floats above any app:
+
+- Drag the robot to move it anywhere on screen.
+- Tap the robot to capture the current screen, ask Gemini what is on it, and
+  hear the answer aloud.
+- Screen reading requires screen context to be on. If it is off, tapping the
+  robot opens AMI so you can enable it.
+- Use the notification's **Stop** action or turn the switch off to remove it.
+
 ## Building the APK
 
 ### GitHub Actions (recommended)
@@ -110,12 +127,14 @@ lib/
   screens/                      Home, chat, and settings screens
   services/
     gemini_service.dart         Gemini API client and error handling
+    overlay_service.dart        Floating robot bridge
     settings_service.dart       Local settings persistence
     screen_capture_service.dart Android screen capture bridge
-    voice_service.dart          Speech-to-text and text-to-speech
+    voice_service.dart          Speech-to-text, neural voice selection, TTS
   widgets/voice_orb.dart        Animated voice orb
 android/
-  app/src/main/kotlin/...       MainActivity and ScreenCaptureService
+  app/src/main/kotlin/...       MainActivity, ScreenCaptureService,
+                                FloatingOrbService, RobotOrbView
   app/build.gradle.kts          Android app configuration
 ```
 
@@ -127,7 +146,9 @@ android/
 | `RECORD_AUDIO` | Voice input |
 | `FOREGROUND_SERVICE` | Keep screen capture running |
 | `FOREGROUND_SERVICE_MEDIA_PROJECTION` | Android 14+ screen capture service |
-| `POST_NOTIFICATIONS` | Show the screen-sharing notification |
+| `FOREGROUND_SERVICE_SPECIAL_USE` | Keep the floating robot service alive |
+| `POST_NOTIFICATIONS` | Show screen-sharing and floating robot notifications |
+| `SYSTEM_ALERT_WINDOW` | Draw the floating robot over other apps |
 
 ## Privacy
 
@@ -135,6 +156,8 @@ android/
 - Chat history is kept in memory for the current session.
 - Screenshots are captured only while screen sharing is active and are sent only
   to the Gemini API as part of your request.
+- The floating robot does not read the screen on its own. A capture happens only
+  when you tap it while screen context is on.
 - No analytics, tracking, or third-party servers are used by this app.
 
 ## Release signing
