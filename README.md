@@ -2,7 +2,7 @@
 
 AMI (AI Multimodal Intelligence) is a screen-aware voice companion for Android.
 Talk to it, share your screen, and get short, human answers powered by Google
-Gemini or Groq.
+Gemini, Groq, or Cloudflare Workers AI.
 
 [![Build Android APK](https://github.com/evereasygaming-ux/AMI-AI/actions/workflows/build-apk.yml/badge.svg)](https://github.com/evereasygaming-ux/AMI-AI/actions/workflows/build-apk.yml)
 
@@ -21,8 +21,8 @@ Gemini or Groq.
   questions about "this" or "my screen".
 - Quick delayed screen look with a countdown before capturing.
 - Chat history with a dedicated chat screen.
-- Select Gemini (default) or Groq from Settings, with separate API keys and
-  model settings for each provider.
+- Select Gemini (default), Groq, or Cloudflare Workers AI from Settings, with
+  separate credentials and model settings for each provider.
 - API keys are stored locally with `shared_preferences`; requests and attached
   screen images go only to the selected provider.
 - Dark, glass-style UI with an animated voice orb.
@@ -36,6 +36,7 @@ Gemini or Groq.
 | Gemini 3.6 Flash | `gemini-3.6-flash` | Default; best speed/quality balance |
 | Gemini 3.1 Pro | `gemini-3.1-pro` | Strongest reasoning |
 | Groq Qwen 3.8 27B | `qwen/qwen3.8-27b` | Text and image input |
+| Cloudflare Gemma 4 26B A4B | `@cf/google/gemma-4-26b-a4b-it` | Text and image input |
 
 You can also type a different model ID manually in Settings.
 
@@ -44,9 +45,10 @@ You can also type a different model ID manually in Settings.
 - Flutter 3.47.7 / Dart 3.13.5
 - Google Gemini API (`generativelanguage.googleapis.com`, `v1beta`)
 - Groq Chat Completions API (`api.groq.com/openai/v1`)
+- Cloudflare Workers AI Chat Completions API
 - `speech_to_text` for voice input
 - `flutter_tts` for spoken replies
-- `http` for Gemini and Groq requests
+- `http` for Gemini, Groq, and Cloudflare requests
 - `shared_preferences` for local settings
 - Kotlin Android `MediaProjection` service for screen capture
 - Kotlin Android Accessibility Service with a user-consent disclosure and
@@ -58,7 +60,8 @@ You can also type a different model ID manually in Settings.
 - JDK 17
 - Android SDK (compile/target SDK provided by Flutter)
 - A Gemini key from [Google AI Studio](https://aistudio.google.com/apikey) or
-  a Groq key from [Groq Console](https://console.groq.com/keys)
+  a Groq key from [Groq Console](https://console.groq.com/keys), or a
+  Cloudflare Account ID and Workers AI API token
 - An Android device or emulator (screen capture is Android-only)
 
 ## Getting started
@@ -70,9 +73,10 @@ flutter pub get
 flutter run
 ```
 
-Then open **Settings**, select Gemini or Groq, paste that provider's API key,
-choose its model, and start talking. Screen sharing and microphone permissions
-are requested by Android at runtime.
+Then open **Settings**, select a provider, enter its credentials, choose its
+model, and start talking. Cloudflare requires both an Account ID and Workers AI
+API token. Screen sharing and microphone permissions are requested by Android
+at runtime.
 
 ### Floating robot
 
@@ -138,6 +142,7 @@ lib/
   services/
     gemini_service.dart         Gemini API client and error handling
     groq_service.dart           Groq API client and error handling
+    cloudflare_service.dart     Cloudflare Workers AI client and error handling
     overlay_service.dart        Floating robot bridge
     accessibility_bridge.dart   Accessibility Service bridge
     settings_service.dart       Local settings persistence

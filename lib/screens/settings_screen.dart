@@ -31,8 +31,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   late final TextEditingController _keyController;
   late final TextEditingController _groqKeyController;
+  late final TextEditingController _cloudflareAccountController;
+  late final TextEditingController _cloudflareTokenController;
   late final TextEditingController _modelController;
   late final TextEditingController _groqModelController;
+  late final TextEditingController _cloudflareModelController;
   late String _provider;
   late String _voiceLocale;
   late bool _autoSpeak;
@@ -46,8 +49,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final settings = widget.controller.settings;
     _keyController = TextEditingController(text: settings.apiKey);
     _groqKeyController = TextEditingController(text: settings.groqApiKey);
+    _cloudflareAccountController = TextEditingController(
+      text: settings.cloudflareAccountId,
+    );
+    _cloudflareTokenController = TextEditingController(
+      text: settings.cloudflareApiToken,
+    );
     _modelController = TextEditingController(text: settings.model);
     _groqModelController = TextEditingController(text: settings.groqModel);
+    _cloudflareModelController = TextEditingController(
+      text: settings.cloudflareModel,
+    );
     _provider = settings.provider;
     _voiceLocale = settings.voiceLocale;
     _autoSpeak = settings.autoSpeak;
@@ -59,8 +71,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _keyController.dispose();
     _groqKeyController.dispose();
+    _cloudflareAccountController.dispose();
+    _cloudflareTokenController.dispose();
     _modelController.dispose();
     _groqModelController.dispose();
+    _cloudflareModelController.dispose();
     super.dispose();
   }
 
@@ -75,12 +90,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       groqModel: _groqModelController.text.trim().isEmpty
           ? 'qwen/qwen3.8-27b'
           : _groqModelController.text.trim(),
+      cloudflareAccountId: _cloudflareAccountController.text.trim(),
+      cloudflareApiToken: _cloudflareTokenController.text.trim(),
+      cloudflareModel: _cloudflareModelController.text.trim().isEmpty
+          ? '@cf/google/gemma-4-26b-a4b-it'
+          : _cloudflareModelController.text.trim(),
       voiceLocale: _voiceLocale,
       autoSpeak: _autoSpeak,
       autoScreen: _autoScreen,
       floatingRobot: _floatingRobot,
-      accessibilityConsent:
-          widget.controller.settings.accessibilityConsent,
+      accessibilityConsent: widget.controller.settings.accessibilityConsent,
     );
     await widget.controller.saveSettings(next);
     if (!mounted) return;
@@ -89,7 +108,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         content: Text(
           next.hasApiKey
               ? 'Saved. AMI is ready — tap the orb and talk.'
-              : 'Saved. Add a ${_provider == 'groq' ? 'Groq' : 'Gemini'} API key to start chatting.',
+              : 'Saved. Add the ${_provider == 'groq'
+                    ? 'Groq API key'
+                    : _provider == 'cloudflare'
+                    ? 'Cloudflare Account ID and API token'
+                    : 'Gemini API key'} to start chatting.',
         ),
       ),
     );
@@ -155,7 +178,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     if (!opened) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open Android Accessibility settings.')),
+        const SnackBar(
+          content: Text('Could not open Android Accessibility settings.'),
+        ),
       );
     }
   }
@@ -183,6 +208,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           items: const [
             DropdownMenuItem(value: 'gemini', child: Text('Gemini (default)')),
             DropdownMenuItem(value: 'groq', child: Text('Groq')),
+            DropdownMenuItem(
+              value: 'cloudflare',
+              child: Text('Cloudflare Workers AI'),
+            ),
           ],
           onChanged: (value) => setState(() => _provider = value ?? 'gemini'),
         ),
@@ -264,22 +293,90 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: glassPanel(radius: 20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Groq API key', style: TextStyle(fontSize: 12)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _groqKeyController,
-              obscureText: _obscure,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: const InputDecoration(hintText: 'gsk_… your Groq API key', isDense: true),
-            ),
-            const SizedBox(height: 7),
-            const Text('Create a key at console.groq.com/keys. It stays on this phone and is sent only to Groq when Groq is selected.', style: TextStyle(fontSize: 10.5, color: AmiColors.muted, height: 1.4)),
-          ]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Groq API key', style: TextStyle(fontSize: 12)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _groqKeyController,
+                obscureText: _obscure,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(
+                  hintText: 'gsk_… your Groq API key',
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 7),
+              const Text(
+                'Create a key at console.groq.com/keys. It stays on this phone and is sent only to Groq when Groq is selected.',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: AmiColors.muted,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: glassPanel(radius: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Cloudflare Account ID',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 7),
+              TextField(
+                controller: _cloudflareAccountController,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(
+                  hintText: 'Account ID',
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 11),
+              const Text(
+                'Workers AI API token',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 7),
+              TextField(
+                controller: _cloudflareTokenController,
+                obscureText: _obscure,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(
+                  hintText: 'Cloudflare API token',
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 7),
+              const Text(
+                'Create a Workers AI API token in the Cloudflare dashboard. It stays on this phone and is sent to Cloudflare only when selected.',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: AmiColors.muted,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 20),
-        _label(_provider == 'groq' ? 'GROQ MODEL' : 'GEMINI MODEL'),
+        _label(
+          _provider == 'groq'
+              ? 'GROQ MODEL'
+              : _provider == 'cloudflare'
+              ? 'CLOUDFLARE MODEL'
+              : 'GEMINI MODEL',
+        ),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.all(16),
@@ -288,12 +385,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextField(
-                controller: _provider == 'groq' ? _groqModelController : _modelController,
+                controller: _provider == 'groq'
+                    ? _groqModelController
+                    : _provider == 'cloudflare'
+                    ? _cloudflareModelController
+                    : _modelController,
                 autocorrect: false,
                 enableSuggestions: false,
                 style: const TextStyle(fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: _provider == 'groq' ? 'qwen/qwen3.8-27b' : 'gemini-3.6-flash',
+                  hintText: _provider == 'groq'
+                      ? 'qwen/qwen3.8-27b'
+                      : _provider == 'cloudflare'
+                      ? '@cf/google/gemma-4-26b-a4b-it'
+                      : 'gemini-3.6-flash',
                   isDense: true,
                 ),
               ),
@@ -302,10 +407,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 spacing: 7,
                 runSpacing: 7,
                 children: [
-                  for (final model in (_provider == 'groq' ? const ['qwen/qwen3.8-27b'] : _models))
+                  for (final model
+                      in (_provider == 'groq'
+                          ? const ['qwen/qwen3.8-27b']
+                          : _provider == 'cloudflare'
+                          ? const ['@cf/google/gemma-4-26b-a4b-it']
+                          : _models))
                     GestureDetector(
                       onTap: () => setState(() {
-                        (_provider == 'groq' ? _groqModelController : _modelController).text = model;
+                        (_provider == 'groq'
+                                    ? _groqModelController
+                                    : _provider == 'cloudflare'
+                                    ? _cloudflareModelController
+                                    : _modelController)
+                                .text =
+                            model;
                       }),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -313,12 +429,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: (_provider == 'groq' ? _groqModelController.text : _modelController.text) == model
+                          color:
+                              (_provider == 'groq'
+                                      ? _groqModelController.text
+                                      : _provider == 'cloudflare'
+                                      ? _cloudflareModelController.text
+                                      : _modelController.text) ==
+                                  model
                               ? AmiColors.cyan.withValues(alpha: .14)
                               : AmiColors.panelSoft,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: (_provider == 'groq' ? _groqModelController.text : _modelController.text) == model
+                            color:
+                                (_provider == 'groq'
+                                        ? _groqModelController.text
+                                        : _provider == 'cloudflare'
+                                        ? _cloudflareModelController.text
+                                        : _modelController.text) ==
+                                    model
                                 ? AmiColors.cyan.withValues(alpha: .4)
                                 : Colors.white.withValues(alpha: .06),
                           ),
@@ -327,7 +455,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           model,
                           style: TextStyle(
                             fontSize: 10.5,
-                            color: (_provider == 'groq' ? _groqModelController.text : _modelController.text) == model
+                            color:
+                                (_provider == 'groq'
+                                        ? _groqModelController.text
+                                        : _provider == 'cloudflare'
+                                        ? _cloudflareModelController.text
+                                        : _modelController.text) ==
+                                    model
                                 ? AmiColors.cyan
                                 : AmiColors.muted,
                           ),
@@ -361,7 +495,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Expanded(
                     child: Text(
                       'Language',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   DropdownButton<String>(
@@ -393,8 +530,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Divider(height: 22),
               _SwitchRow(
                 title: 'Attach screen automatically',
-                subtitle:
-                    'When screen context is on, every question includes a screenshot.',
+                subtitle: 'When screen context is on, every question includes a screenshot.',
                 value: _autoScreen,
                 onChanged: (value) => setState(() => _autoScreen = value),
               ),
@@ -411,16 +547,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               _SwitchRow(
                 title: 'Floating robot',
-                subtitle:
-                    'A tiny 3D robot floats over other apps. Tap it to read your screen aloud.',
+                subtitle: 'A tiny 3D robot floats over other apps. Tap it to read your screen aloud.',
                 value: _floatingRobot,
                 onChanged: _toggleFloatingRobot,
               ),
               const Divider(height: 22),
               const _PrivacyLine(
                 icon: Icons.layers_outlined,
-                text:
-                    'Needs the "Display over other apps" permission. Screen reading works while screen context is on.',
+                text: 'Needs the "Display over other apps" permission. Screen reading works while screen context is on.',
               ),
             ],
           ),
@@ -436,23 +570,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.accessibility_new_rounded,
-                      size: 18, color: AmiColors.cyan),
+                  const Icon(
+                    Icons.accessibility_new_rounded,
+                    size: 18,
+                    color: AmiColors.cyan,
+                  ),
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
                       'Screen interaction',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   Text(
                     !widget.controller.settings.accessibilityConsent
                         ? 'CONSENT NEEDED'
                         : widget.controller.accessibilityConnected
-                            ? 'ACTIVE'
-                            : widget.controller.accessibilityEnabled
-                                ? 'ENABLED'
-                                : 'OFF',
+                        ? 'ACTIVE'
+                        : widget.controller.accessibilityEnabled
+                        ? 'ENABLED'
+                        : 'OFF',
                     style: const TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.w700,
@@ -494,20 +634,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               _PrivacyLine(
                 icon: Icons.phone_android_rounded,
-                text:
-                    'Screen frames are captured on your phone. Only a frame attached to a question is sent to the selected provider (Gemini or Groq).',
+                text: 'Screen frames are captured on your phone. Only a frame attached to a question is sent to the selected provider.',
               ),
               SizedBox(height: 11),
               _PrivacyLine(
                 icon: Icons.lock_outline_rounded,
-                text:
-                    'API keys are saved locally. Only the selected provider’s key is sent with its requests.',
+                text: 'API keys are saved locally. Only the selected provider’s key is sent with its requests.',
               ),
               SizedBox(height: 11),
               _PrivacyLine(
                 icon: Icons.memory_rounded,
-                text:
-                    'Chat history lives in memory. Closing AMI clears the conversation.',
+                text: 'Chat history lives in memory. Closing AMI clears the conversation.',
               ),
             ],
           ),
@@ -541,7 +678,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 10),
         const Center(
           child: Text(
-            'AMI v1.0  •  Gemini + Groq',
+            'AMI v1.0  •  Gemini + Groq + Cloudflare',
             style: TextStyle(fontSize: 10, color: AmiColors.muted),
           ),
         ),
@@ -550,14 +687,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _label(String text) => Text(
-        text,
-        style: const TextStyle(
-          fontSize: 10,
-          letterSpacing: 2,
-          fontWeight: FontWeight.w700,
-          color: AmiColors.muted,
-        ),
-      );
+    text,
+    style: const TextStyle(
+      fontSize: 10,
+      letterSpacing: 2,
+      fontWeight: FontWeight.w700,
+      color: AmiColors.muted,
+    ),
+  );
 }
 
 class _SwitchRow extends StatelessWidget {

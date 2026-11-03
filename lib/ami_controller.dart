@@ -1,8 +1,10 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import 'models/chat_message.dart';
 import 'services/accessibility_bridge.dart';
+import 'services/cloudflare_service.dart';
 import 'services/gemini_service.dart';
 import 'services/groq_service.dart';
 import 'services/overlay_service.dart';
@@ -17,17 +19,19 @@ class AmiController extends ChangeNotifier {
     SettingsService? settingsService,
     GeminiService? gemini,
     GroqService? groq,
+    CloudflareService? cloudflare,
     ScreenCaptureService? screen,
     VoiceService? voice,
     OverlayService? overlay,
     AccessibilityBridge? accessibility,
-  })  : _settingsService = settingsService ?? SettingsService(),
-        _gemini = gemini ?? GeminiService(),
-        _groq = groq ?? GroqService(),
-        _screen = screen ?? ScreenCaptureService(),
-        _voice = voice ?? VoiceService(),
-        _overlay = overlay ?? OverlayService(),
-        _accessibility = accessibility ?? AccessibilityBridge() {
+  }) : _settingsService = settingsService ?? SettingsService(),
+       _gemini = gemini ?? GeminiService(),
+       _groq = groq ?? GroqService(),
+       _cloudflare = cloudflare ?? CloudflareService(),
+       _screen = screen ?? ScreenCaptureService(),
+       _voice = voice ?? VoiceService(),
+       _overlay = overlay ?? OverlayService(),
+       _accessibility = accessibility ?? AccessibilityBridge() {
     _screen.isSharing.addListener(_onScreenChanged);
     _screen.onDelayedCaptureReady = _handleDelayedCapture;
     _overlay.onOrbTap = _handleOrbTap;
@@ -41,6 +45,7 @@ class AmiController extends ChangeNotifier {
   final SettingsService _settingsService;
   final GeminiService _gemini;
   final GroqService _groq;
+  final CloudflareService _cloudflare;
   final ScreenCaptureService _screen;
   final VoiceService _voice;
   final OverlayService _overlay;
@@ -122,7 +127,8 @@ class AmiController extends ChangeNotifier {
     final granted = await _overlay.isPermissionGranted();
     if (!granted) {
       await _overlay.requestPermission();
-      notice = 'Allow "Display over other apps" for AMI, then turn the '
+      notice =
+          'Allow "Display over other apps" for AMI, then turn the '
           'floating robot on again.';
       notifyListeners();
       return false;
@@ -141,10 +147,9 @@ class AmiController extends ChangeNotifier {
   }
 
   ChatMessage _welcomeMessage() => ChatMessage(
-        role: MessageRole.assistant,
-        text:
-            "Hey, I'm AMI — your screen-aware voice companion. Tap the orb and talk to me, or turn on screen context and I'll look at what you're seeing.",
-      );
+    role: MessageRole.assistant,
+    text: "Hey, I'm AMI — your screen-aware voice companion. Tap the orb and talk to me, or turn on screen context and I'll look at what you're seeing.",
+  );
 
   void _onScreenChanged() {
     if (!screenActive) {
@@ -281,8 +286,7 @@ class AmiController extends ChangeNotifier {
     notice = null;
     final ready = await _voice.initializeSpeech();
     if (!ready) {
-      notice =
-          'Microphone permission is needed. Allow it in Android settings and try again.';
+      notice = 'Microphone permission is needed. Allow it in Android settings and try again.';
       notifyListeners();
       return;
     }
@@ -352,14 +356,14 @@ class AmiController extends ChangeNotifier {
     if (trimmed.isEmpty || _isThinking) return;
 
     if (!hasApiKey) {
-      notice = settings.provider == 'groq'
-          ? 'Add your Groq API key in Settings to chat with AMI.'
-          : 'Add your Gemini API key in Settings to chat with AMI.';
-      messages.add(ChatMessage(
-        role: MessageRole.assistant,
-        text: notice!,
-        isError: true,
-      ));
+      notice = switch (settings.provider) {
+        'groq' => 'Add your Groq API key in Settings to chat with AMI.',
+        'cloudflare' => 'Add your Cloudflare Account ID and API token in Settings to chat with AMI.',
+        _ => 'Add your Gemini API key in Settings to chat with AMI.',
+      };
+      messages.add(
+        ChatMessage(role: MessageRole.assistant, text: notice!, isError: true),
+      );
       notifyListeners();
       return;
     }
@@ -367,25 +371,31 @@ class AmiController extends ChangeNotifier {
     await _voice.stopSpeaking();
 
     Uint8List? frame = providedFrame;
-    final wantsScreen =
-        includeScreen ?? (settings.autoScreen && screenActive);
+    final wantsScreen = includeScreen ?? (settings.autoScreen && screenActive);
     if (frame == null && wantsScreen && screenActive) {
       frame = await _grabScreen();
     }
     if (frame != null) lastFrame = frame;
 
-    messages.add(ChatMessage(
-      role: MessageRole.user,
-      text: trimmed,
-      image: frame,
-    ));
+    messages.add(
+      ChatMessage(role: MessageRole.user, text: trimmed, image: frame),
+    );
     _isThinking = true;
     transcript = '';
     notice = null;
     notifyListeners();
 
     try {
-      final reply = settings.provider == 'groq'
+      final reply = settings.provider == 'cloudflare'
+          ? await _cloudflare.generate(
+              accountId: settings.cloudflareAccountId,
+              apiToken: settings.cloudflareApiToken,
+              model: settings.cloudflareModel,
+              history: messages,
+              screenshot: frame,
+              localeHint: settings.voiceLocale,
+            )
+          : settings.provider == 'groq'
           ? await _groq.generate(
               apiKey: settings.groqApiKey,
               model: settings.groqModel,
@@ -410,12 +420,14 @@ class AmiController extends ChangeNotifier {
       _isThinking = false;
       final message = error is GeminiException
           ? error.message
-          : 'Something went wrong while talking to ${settings.provider == 'groq' ? 'Groq' : 'Gemini'}. Please try again.';
-      messages.add(ChatMessage(
-        role: MessageRole.assistant,
-        text: message,
-        isError: true,
-      ));
+          : 'Something went wrong while talking to ${settings.provider == 'groq'
+                ? 'Groq'
+                : settings.provider == 'cloudflare'
+                ? 'Cloudflare AI'
+                : 'Gemini'}. Please try again.';
+      messages.add(
+        ChatMessage(role: MessageRole.assistant, text: message, isError: true),
+      );
       notice = message;
       notifyListeners();
     }

@@ -7,6 +7,9 @@ class AmiSettings {
     this.provider = 'gemini',
     this.groqApiKey = '',
     this.groqModel = 'qwen/qwen3.8-27b',
+    this.cloudflareAccountId = '',
+    this.cloudflareApiToken = '',
+    this.cloudflareModel = '@cf/google/gemma-4-26b-a4b-it',
     this.voiceLocale = 'auto',
     this.autoSpeak = true,
     this.autoScreen = true,
@@ -19,13 +22,22 @@ class AmiSettings {
   final String provider;
   final String groqApiKey;
   final String groqModel;
+  final String cloudflareAccountId;
+  final String cloudflareApiToken;
+  final String cloudflareModel;
   final String voiceLocale;
   final bool autoSpeak;
   final bool autoScreen;
   final bool floatingRobot;
   final bool accessibilityConsent;
 
-  bool get hasApiKey => (provider == 'groq' ? groqApiKey : apiKey).trim().isNotEmpty;
+  bool get hasApiKey => switch (provider) {
+    'groq' => groqApiKey.trim().isNotEmpty,
+    'cloudflare' =>
+      cloudflareAccountId.trim().isNotEmpty &&
+          cloudflareApiToken.trim().isNotEmpty,
+    _ => apiKey.trim().isNotEmpty,
+  };
 
   AmiSettings copyWith({
     String? apiKey,
@@ -33,24 +45,29 @@ class AmiSettings {
     String? provider,
     String? groqApiKey,
     String? groqModel,
+    String? cloudflareAccountId,
+    String? cloudflareApiToken,
+    String? cloudflareModel,
     String? voiceLocale,
     bool? autoSpeak,
     bool? autoScreen,
     bool? floatingRobot,
     bool? accessibilityConsent,
-  }) =>
-      AmiSettings(
-        apiKey: apiKey ?? this.apiKey,
-        model: model ?? this.model,
-        provider: provider ?? this.provider,
-        groqApiKey: groqApiKey ?? this.groqApiKey,
-        groqModel: groqModel ?? this.groqModel,
-        voiceLocale: voiceLocale ?? this.voiceLocale,
-        autoSpeak: autoSpeak ?? this.autoSpeak,
-        autoScreen: autoScreen ?? this.autoScreen,
-        floatingRobot: floatingRobot ?? this.floatingRobot,
-        accessibilityConsent: accessibilityConsent ?? this.accessibilityConsent,
-      );
+  }) => AmiSettings(
+    apiKey: apiKey ?? this.apiKey,
+    model: model ?? this.model,
+    provider: provider ?? this.provider,
+    groqApiKey: groqApiKey ?? this.groqApiKey,
+    groqModel: groqModel ?? this.groqModel,
+    cloudflareAccountId: cloudflareAccountId ?? this.cloudflareAccountId,
+    cloudflareApiToken: cloudflareApiToken ?? this.cloudflareApiToken,
+    cloudflareModel: cloudflareModel ?? this.cloudflareModel,
+    voiceLocale: voiceLocale ?? this.voiceLocale,
+    autoSpeak: autoSpeak ?? this.autoSpeak,
+    autoScreen: autoScreen ?? this.autoScreen,
+    floatingRobot: floatingRobot ?? this.floatingRobot,
+    accessibilityConsent: accessibilityConsent ?? this.accessibilityConsent,
+  );
 }
 
 class SettingsService {
@@ -59,6 +76,9 @@ class SettingsService {
   static const _kProvider = 'ami_provider';
   static const _kGroqApiKey = 'ami_groq_api_key';
   static const _kGroqModel = 'ami_groq_model';
+  static const _kCloudflareAccountId = 'ami_cloudflare_account_id';
+  static const _kCloudflareApiToken = 'ami_cloudflare_api_token';
+  static const _kCloudflareModel = 'ami_cloudflare_model';
   static const _kVoiceLocale = 'ami_voice_locale';
   static const _kAutoSpeak = 'ami_auto_speak';
   static const _kAutoScreen = 'ami_auto_screen';
@@ -73,6 +93,10 @@ class SettingsService {
       provider: prefs.getString(_kProvider) ?? 'gemini',
       groqApiKey: prefs.getString(_kGroqApiKey) ?? '',
       groqModel: prefs.getString(_kGroqModel) ?? 'qwen/qwen3.8-27b',
+      cloudflareAccountId: prefs.getString(_kCloudflareAccountId) ?? '',
+      cloudflareApiToken: prefs.getString(_kCloudflareApiToken) ?? '',
+      cloudflareModel:
+          prefs.getString(_kCloudflareModel) ?? '@cf/google/gemma-4-26b-a4b-it',
       voiceLocale: prefs.getString(_kVoiceLocale) ?? 'auto',
       autoSpeak: prefs.getBool(_kAutoSpeak) ?? true,
       autoScreen: prefs.getBool(_kAutoScreen) ?? true,
@@ -88,13 +112,19 @@ class SettingsService {
     await prefs.setString(_kProvider, settings.provider);
     await prefs.setString(_kGroqApiKey, settings.groqApiKey.trim());
     await prefs.setString(_kGroqModel, settings.groqModel.trim());
+    await prefs.setString(
+      _kCloudflareAccountId,
+      settings.cloudflareAccountId.trim(),
+    );
+    await prefs.setString(
+      _kCloudflareApiToken,
+      settings.cloudflareApiToken.trim(),
+    );
+    await prefs.setString(_kCloudflareModel, settings.cloudflareModel.trim());
     await prefs.setString(_kVoiceLocale, settings.voiceLocale);
     await prefs.setBool(_kAutoSpeak, settings.autoSpeak);
     await prefs.setBool(_kAutoScreen, settings.autoScreen);
     await prefs.setBool(_kFloatingRobot, settings.floatingRobot);
-    await prefs.setBool(
-      _kAccessibilityConsent,
-      settings.accessibilityConsent,
-    );
+    await prefs.setBool(_kAccessibilityConsent, settings.accessibilityConsent);
   }
 }
