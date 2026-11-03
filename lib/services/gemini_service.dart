@@ -38,7 +38,8 @@ class GeminiService {
     final uri = Uri.parse('$_endpoint/models/$modelId:generateContent');
 
     final contents = <Map<String, dynamic>>[];
-    final recent = history.take(18).toList();
+    final start = history.length > 18 ? history.length - 18 : 0;
+    final recent = history.skip(start).toList();
     for (var i = 0; i < recent.length; i++) {
       final message = recent[i];
       final parts = <Map<String, dynamic>>[];
