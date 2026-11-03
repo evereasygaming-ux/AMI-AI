@@ -98,7 +98,8 @@ class _ChatScreenState extends State<ChatScreen> {
           child: ListView.builder(
             controller: _scroll,
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            itemCount: messages.length +
+            itemCount:
+                messages.length +
                 (controller.isThinking ? 1 : 0) +
                 (messages.length <= 1 ? 1 : 0),
             itemBuilder: (context, index) {
@@ -106,7 +107,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 final message = messages[index];
                 return _MessageBubble(
                   message: message,
-                  speaking: controller.isSpeaking &&
+                  speaking:
+                      controller.isSpeaking &&
                       controller.messages.last == message,
                   onSpeak: () => controller.speakMessage(message.text),
                 );
@@ -114,17 +116,54 @@ class _ChatScreenState extends State<ChatScreen> {
               if (controller.isThinking && index == messages.length) {
                 return const _TypingBubble();
               }
-              return _Suggestions(onPick: (text) {
-                unawaited(controller.sendMessage(text));
-              });
+              return _Suggestions(
+                onPick: (text) {
+                  unawaited(controller.sendMessage(text));
+                },
+              );
             },
           ),
         ),
-        _Composer(
-          controller: controller,
-          input: _input,
-          onSend: _send,
-        ),
+        if (controller.pendingScreenAction != null)
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AmiColors.panel,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AmiColors.cyan.withValues(alpha: .45)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'AMI wants your approval',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  controller.pendingScreenAction!.description,
+                  style: const TextStyle(fontSize: 12, color: AmiColors.muted),
+                ),
+                const SizedBox(height: 9),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: controller.cancelPendingScreenAction,
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: controller.approvePendingScreenAction,
+                      child: const Text('Approve this action'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        _Composer(controller: controller, input: _input, onSend: _send),
       ],
     );
   }
@@ -148,8 +187,8 @@ class _MessageBubble extends StatelessWidget {
     final borderColor = error
         ? AmiColors.pink.withValues(alpha: .35)
         : isUser
-            ? AmiColors.cyan.withValues(alpha: .25)
-            : Colors.white.withValues(alpha: .06);
+        ? AmiColors.cyan.withValues(alpha: .25)
+        : Colors.white.withValues(alpha: .06);
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -177,8 +216,9 @@ class _MessageBubble extends StatelessWidget {
           border: Border.all(color: borderColor),
         ),
         child: Column(
-          crossAxisAlignment:
-              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isUser
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
             if (message.image != null)
               ClipRRect(
@@ -338,11 +378,10 @@ class _TypingBubbleState extends State<_TypingBubble>
               for (var i = 0; i < 3; i++) ...[
                 if (i > 0) const SizedBox(width: 5),
                 Opacity(
-                  opacity: 0.25 +
+                  opacity:
+                      0.25 +
                       0.75 *
-                          ((1 -
-                                  ((_controller.value - i * .18).abs() %
-                                      1))
+                          ((1 - ((_controller.value - i * .18).abs() % 1))
                               .clamp(0.0, 1.0)),
                   child: Container(
                     width: 7,
@@ -384,10 +423,7 @@ class _Suggestions extends StatelessWidget {
         children: [
           for (final item in _items)
             ActionChip(
-              label: Text(
-                item,
-                style: const TextStyle(fontSize: 11.5),
-              ),
+              label: Text(item, style: const TextStyle(fontSize: 11.5)),
               onPressed: () => onPick(item),
               backgroundColor: AmiColors.panel,
               side: BorderSide(color: AmiColors.cyan.withValues(alpha: .18)),
@@ -487,8 +523,9 @@ class _Composer extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 IconButton(
-                  onPressed:
-                      controller.screenBusy ? null : controller.toggleScreenShare,
+                  onPressed: controller.screenBusy
+                      ? null
+                      : controller.toggleScreenShare,
                   icon: Icon(
                     controller.screenActive
                         ? Icons.screen_share_rounded
@@ -516,8 +553,10 @@ class _Composer extends StatelessWidget {
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 12,
+                      ),
                     ),
                   ),
                 ),
@@ -546,9 +585,14 @@ class _Composer extends StatelessWidget {
                         )
                       : IconButton.filled(
                           onPressed: onSend,
-                          icon: const Icon(Icons.arrow_upward_rounded, size: 20),
+                          icon: const Icon(
+                            Icons.arrow_upward_rounded,
+                            size: 20,
+                          ),
                           style: IconButton.styleFrom(
-                            backgroundColor: AmiColors.cyan.withValues(alpha: .18),
+                            backgroundColor: AmiColors.cyan.withValues(
+                              alpha: .18,
+                            ),
                             foregroundColor: AmiColors.cyan,
                           ),
                         ),

@@ -15,6 +15,7 @@ class AmiSettings {
     this.autoScreen = true,
     this.floatingRobot = false,
     this.accessibilityConsent = false,
+    this.screenActionConsent = false,
   });
 
   final String apiKey;
@@ -30,6 +31,7 @@ class AmiSettings {
   final bool autoScreen;
   final bool floatingRobot;
   final bool accessibilityConsent;
+  final bool screenActionConsent;
 
   bool get hasApiKey => switch (provider) {
     'groq' => groqApiKey.trim().isNotEmpty,
@@ -53,6 +55,7 @@ class AmiSettings {
     bool? autoScreen,
     bool? floatingRobot,
     bool? accessibilityConsent,
+    bool? screenActionConsent,
   }) => AmiSettings(
     apiKey: apiKey ?? this.apiKey,
     model: model ?? this.model,
@@ -67,6 +70,7 @@ class AmiSettings {
     autoScreen: autoScreen ?? this.autoScreen,
     floatingRobot: floatingRobot ?? this.floatingRobot,
     accessibilityConsent: accessibilityConsent ?? this.accessibilityConsent,
+    screenActionConsent: screenActionConsent ?? this.screenActionConsent,
   );
 }
 
@@ -84,6 +88,7 @@ class SettingsService {
   static const _kAutoScreen = 'ami_auto_screen';
   static const _kFloatingRobot = 'ami_floating_robot';
   static const _kAccessibilityConsent = 'ami_accessibility_consent';
+  static const _kScreenActionConsent = 'ami_screen_action_consent';
 
   Future<AmiSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -102,6 +107,7 @@ class SettingsService {
       autoScreen: prefs.getBool(_kAutoScreen) ?? true,
       floatingRobot: prefs.getBool(_kFloatingRobot) ?? false,
       accessibilityConsent: prefs.getBool(_kAccessibilityConsent) ?? false,
+      screenActionConsent: prefs.getBool(_kScreenActionConsent) ?? false,
     );
   }
 
@@ -126,5 +132,6 @@ class SettingsService {
     await prefs.setBool(_kAutoScreen, settings.autoScreen);
     await prefs.setBool(_kFloatingRobot, settings.floatingRobot);
     await prefs.setBool(_kAccessibilityConsent, settings.accessibilityConsent);
+    await prefs.setBool(_kScreenActionConsent, settings.screenActionConsent);
   }
 }

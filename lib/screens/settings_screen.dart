@@ -100,6 +100,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       autoScreen: _autoScreen,
       floatingRobot: _floatingRobot,
       accessibilityConsent: widget.controller.settings.accessibilityConsent,
+      screenActionConsent: widget.controller.settings.screenActionConsent,
     );
     await widget.controller.saveSettings(next);
     if (!mounted) return;
@@ -150,9 +151,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           content: const SingleChildScrollView(
             child: Text(
               'AMI can read visible screen text, control labels, and element positions. '
-              'This phase keeps that screen tree on your phone and does not send it to the selected AI provider. '
-              'The service exposes tap and text-entry methods, but this phase does not connect them to an AI provider. '
-              'Existing screen sharing sends a screenshot to the selected provider only when attached to a question. '
+              'The screen tree stays on your phone. When screen sharing is active, its screenshot may be sent to the selected AI provider with your request. '
+              'For an action request, AMI shows one tap or exact text entry for your approval before it runs. Password fields reject text entry. '
               'You can turn this access off any time in Android Accessibility settings.',
             ),
           ),
@@ -604,7 +604,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 9),
               const Text(
-                'Optional Android access for reading visible controls. The current phase does not connect screen actions to an AI provider. '
+                'Optional Android access for reading visible controls. AI-proposed taps or text entry require your approval each time. '
                 'AMI asks for your consent before opening system settings.',
                 style: TextStyle(
                   fontSize: 10.5,
@@ -613,6 +613,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 12),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Allow AI-proposed screen actions',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Every tap or exact text entry is shown here and needs your approval. Screen images go to the selected provider; the accessibility node tree stays on this phone. Password fields reject text entry.',
+                  style: TextStyle(fontSize: 10.5, color: AmiColors.muted),
+                ),
+                value: widget.controller.settings.screenActionConsent,
+                onChanged: widget.controller.setScreenActionConsent,
+              ),
+              const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(

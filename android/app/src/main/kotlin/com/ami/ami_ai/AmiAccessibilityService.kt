@@ -41,11 +41,14 @@ class AmiAccessibilityService : AccessibilityService() {
     fun tapAt(x: Float, y: Float, onResult: (Boolean) -> Unit) {
         val metrics = resources.displayMetrics
         if (!x.isFinite() || !y.isFinite() || x < 0 || y < 0 ||
-            x >= metrics.widthPixels || y >= metrics.heightPixels
+            x > 1 || y > 1
         ) {
             onResult(false)
             return
         }
+
+        val screenX = x * metrics.widthPixels
+        val screenY = y * metrics.heightPixels
 
         val root = rootInActiveWindow
         if (root == null) {
@@ -53,13 +56,13 @@ class AmiAccessibilityService : AccessibilityService() {
             return
         }
 
-        val target = findClickableNode(root, x, y, IntArray(1), 0)
+        val target = findClickableNode(root, screenX, screenY, IntArray(1), 0)
         if (target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) {
             onResult(true)
             return
         }
 
-        val path = Path().apply { moveTo(x, y) }
+        val path = Path().apply { moveTo(screenX, screenY) }
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
             .build()
@@ -82,9 +85,7 @@ class AmiAccessibilityService : AccessibilityService() {
     fun typeText(text: String): Boolean {
         if (text.length > MAX_INPUT_LENGTH) return false
         val root = rootInActiveWindow ?: return false
-        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-            ?: findEditableNode(root, IntArray(1), 0)
-            ?: return false
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
         if (!focused.isEditable || focused.isPassword) return false
 
         val arguments = Bundle().apply {
@@ -154,21 +155,6 @@ class AmiAccessibilityService : AccessibilityService() {
             findClickableNode(child, x, y, visited, depth + 1)?.let { return it }
         }
         return if (node.isClickable && node.isEnabled) node else null
-    }
-
-    private fun findEditableNode(
-        node: AccessibilityNodeInfo,
-        visited: IntArray,
-        depth: Int
-    ): AccessibilityNodeInfo? {
-        if (depth > MAX_DEPTH || visited[0] >= MAX_VISITED_NODES) return null
-        visited[0]++
-        if (node.isEditable && node.isFocused) return node
-        for (index in 0 until node.childCount) {
-            val child = node.getChild(index) ?: continue
-            findEditableNode(child, visited, depth + 1)?.let { return it }
-        }
-        return null
     }
 
     override fun onDestroy() {

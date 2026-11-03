@@ -15,8 +15,10 @@ Gemini, Groq, or Cloudflare Workers AI.
   the current screen aloud without leaving the app you are in.
 - Optional Android accessibility foundation: after an in-app disclosure and
   explicit opt-in, AMI exposes active-screen UI nodes plus tap and text-entry
-  methods through its Dart/Kotlin bridge. This phase keeps the node tree on the
-  phone and does not connect it to either AI provider.
+  methods through its Dart/Kotlin bridge. If separately enabled, the selected
+  AI provider can propose one tap or exact text entry from an attached
+  screenshot; each action waits for explicit approval. The node tree stays on
+  the phone, and password fields reject text entry.
 - Screen awareness: share your screen so AMI can read what is visible and answer
   questions about "this" or "my screen".
 - Quick delayed screen look with a countdown before capturing.

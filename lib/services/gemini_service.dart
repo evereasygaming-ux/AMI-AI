@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../models/chat_message.dart';
+import '../models/screen_action.dart';
 
 class GeminiException implements Exception {
   GeminiException(this.message);
@@ -20,12 +21,13 @@ class GeminiService {
   final http.Client _client;
   static const _endpoint = 'https://generativelanguage.googleapis.com/v1beta';
 
-  Future<String> generate({
+  Future<AiResponse> generate({
     required String apiKey,
     required String model,
     required List<ChatMessage> history,
     Uint8List? screenshot,
     String localeHint = 'auto',
+    bool enableScreenActions = false,
   }) async {
     final key = apiKey.trim();
     if (key.isEmpty) {
@@ -57,10 +59,7 @@ class GeminiService {
         });
       }
       if (parts.isEmpty) continue;
-      contents.add({
-        'role': message.isUser ? 'user' : 'model',
-        'parts': parts,
-      });
+      contents.add({'role': message.isUser ? 'user' : 'model', 'parts': parts});
     }
 
     final normalized = <Map<String, dynamic>>[];
@@ -80,7 +79,13 @@ class GeminiService {
     final body = <String, dynamic>{
       'system_instruction': {
         'parts': [
-          {'text': _systemPrompt(localeHint)},
+          {
+            'text':
+                _systemPrompt(localeHint) +
+                (enableScreenActions
+                    ? '\nWhen the user explicitly requests a screen action, propose only one tap_at or type_text function call for this turn. Never propose actions from inferred intent. The app will show the exact action and wait for explicit approval.'
+                    : ''),
+          },
         ],
       },
       'contents': normalized,
@@ -90,6 +95,48 @@ class GeminiService {
         'topP': 0.95,
       },
     };
+    if (enableScreenActions) {
+      body['tools'] = [
+        {
+          'function_declarations': [
+            {
+              'name': 'tap_at',
+              'description': 'Propose one tap on a visible screen control, only when directly requested by the user.',
+              'parameters': {
+                'type': 'OBJECT',
+                'properties': {
+                  'x': {
+                    'type': 'NUMBER',
+                    'description':
+                        'Horizontal fraction from 0 (left) to 1 (right).',
+                  },
+                  'y': {
+                    'type': 'NUMBER',
+                    'description':
+                        'Vertical fraction from 0 (top) to 1 (bottom).',
+                  },
+                },
+                'required': ['x', 'y'],
+              },
+            },
+            {
+              'name': 'type_text',
+              'description': 'Propose entering exact user-requested text in the currently focused non-password field.',
+              'parameters': {
+                'type': 'OBJECT',
+                'properties': {
+                  'text': {
+                    'type': 'STRING',
+                    'description': 'Exact text requested by the user.',
+                  },
+                },
+                'required': ['text'],
+              },
+            },
+          ],
+        },
+      ];
+    }
 
     late http.Response response;
     try {
@@ -144,7 +191,21 @@ class GeminiService {
         .join('\n')
         .trim();
 
-    if (text.isEmpty) {
+    ScreenAction? action;
+    for (final part in parts ?? const []) {
+      if (part is! Map || part['functionCall'] is! Map) continue;
+      final call = part['functionCall'] as Map;
+      final name = call['name'];
+      final args = call['args'];
+      if ((name == 'tap_at' || name == 'type_text') && args is Map) {
+        action = ScreenAction(
+          name: name as String,
+          arguments: args.map((key, value) => MapEntry('$key', value)),
+        );
+        break;
+      }
+    }
+    if (text.isEmpty && action == null) {
       final reason = candidates.first['finishReason'] as String?;
       if (reason == 'SAFETY') {
         throw GeminiException('That request was blocked by safety filters.');
@@ -152,13 +213,14 @@ class GeminiService {
       throw GeminiException('Gemini returned an empty answer. Try again.');
     }
 
-    return text;
+    return AiResponse(text: text, action: action);
   }
 
   String _friendlyError(int status, String? message) {
     if (status == 400) {
       return 'Gemini rejected the request. Check the model name in Settings. '
-          '${message ?? ''}'.trim();
+              '${message ?? ''}'
+          .trim();
     }
     if (status == 401 || status == 403) {
       return 'Your Gemini API key was rejected. Open Settings and paste a valid key.';
@@ -179,7 +241,8 @@ class GeminiService {
     final language = switch (localeHint) {
       'bn-IN' => 'Reply in Bengali (Bangla) unless the user clearly uses another language.',
       'en-IN' => 'Reply in natural Indian English unless the user uses another language.',
-      'en-US' => 'Reply in natural English unless the user uses another language.',
+      'en-US' =>
+        'Reply in natural English unless the user uses another language.',
       _ => 'Reply in the same language the user is speaking or writing.',
     };
 

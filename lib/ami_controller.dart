@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'models/chat_message.dart';
+import 'models/screen_action.dart';
 import 'services/accessibility_bridge.dart';
 import 'services/cloudflare_service.dart';
 import 'services/gemini_service.dart';
@@ -66,6 +67,7 @@ class AmiController extends ChangeNotifier {
   String? notice;
   int captureCountdown = 0;
   Uint8List? lastFrame;
+  ScreenAction? pendingScreenAction;
 
   Timer? _countdownTimer;
   bool _voiceHandled = false;
@@ -386,7 +388,7 @@ class AmiController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final reply = settings.provider == 'cloudflare'
+      final result = settings.provider == 'cloudflare'
           ? await _cloudflare.generate(
               accountId: settings.cloudflareAccountId,
               apiToken: settings.cloudflareApiToken,
@@ -394,6 +396,7 @@ class AmiController extends ChangeNotifier {
               history: messages,
               screenshot: frame,
               localeHint: settings.voiceLocale,
+              enableScreenActions: _canPlanScreenActions(frame),
             )
           : settings.provider == 'groq'
           ? await _groq.generate(
@@ -402,6 +405,7 @@ class AmiController extends ChangeNotifier {
               history: messages,
               screenshot: frame,
               localeHint: settings.voiceLocale,
+              enableScreenActions: _canPlanScreenActions(frame),
             )
           : await _gemini.generate(
               apiKey: settings.apiKey,
@@ -409,12 +413,27 @@ class AmiController extends ChangeNotifier {
               history: messages,
               screenshot: frame,
               localeHint: settings.voiceLocale,
+              enableScreenActions: _canPlanScreenActions(frame),
             );
-      messages.add(ChatMessage(role: MessageRole.assistant, text: reply));
+      if (result.action != null) {
+        pendingScreenAction = result.action;
+        messages.add(
+          ChatMessage(
+            role: MessageRole.assistant,
+            text: result.text.isEmpty
+                ? 'I have one screen action ready for your approval.'
+                : result.text,
+          ),
+        );
+      } else {
+        messages.add(
+          ChatMessage(role: MessageRole.assistant, text: result.text),
+        );
+      }
       _isThinking = false;
       notifyListeners();
-      if (settings.autoSpeak) {
-        unawaited(_voice.speak(reply, localeId: settings.voiceLocale));
+      if (settings.autoSpeak && result.text.isNotEmpty) {
+        unawaited(_voice.speak(result.text, localeId: settings.voiceLocale));
       }
     } catch (error) {
       _isThinking = false;
@@ -506,14 +525,148 @@ class AmiController extends ChangeNotifier {
   }
 
   Future<bool> tapAt(double x, double y) async {
-    if (!settings.accessibilityConsent || !accessibilityConnected) return false;
+    if (!settings.accessibilityConsent ||
+        !settings.screenActionConsent ||
+        !accessibilityConnected) {
+      return false;
+    }
     return _accessibility.tapAt(x, y);
   }
 
   Future<bool> typeText(String text) async {
-    if (!settings.accessibilityConsent || !accessibilityConnected) return false;
+    if (!settings.accessibilityConsent ||
+        !settings.screenActionConsent ||
+        !accessibilityConnected) {
+      return false;
+    }
     return _accessibility.typeText(text);
   }
+
+  bool _canPlanScreenActions(Uint8List? frame) =>
+      frame != null &&
+      settings.accessibilityConsent &&
+      settings.screenActionConsent &&
+      accessibilityConnected;
+
+  Future<void> setScreenActionConsent(bool accepted) async {
+    settings = settings.copyWith(screenActionConsent: accepted);
+    await _settingsService.save(settings);
+    if (!accepted) pendingScreenAction = null;
+    notifyListeners();
+  }
+
+  void cancelPendingScreenAction() {
+    if (pendingScreenAction == null) return;
+    pendingScreenAction = null;
+    messages.add(
+      ChatMessage(
+        role: MessageRole.assistant,
+        text: 'Screen action cancelled.',
+      ),
+    );
+    notifyListeners();
+  }
+
+  Future<void> approvePendingScreenAction() async {
+    final action = pendingScreenAction;
+    if (action == null ||
+        _isThinking ||
+        !settings.screenActionConsent ||
+        !settings.accessibilityConsent ||
+        !accessibilityConnected) {
+      return;
+    }
+    pendingScreenAction = null;
+    _isThinking = true;
+    notifyListeners();
+
+    var succeeded = false;
+    if (action.name == 'tap_at') {
+      final x = action.arguments['x'];
+      final y = action.arguments['y'];
+      if (x is num &&
+          y is num &&
+          x.isFinite &&
+          y.isFinite &&
+          x >= 0 &&
+          x <= 1 &&
+          y >= 0 &&
+          y <= 1) {
+        succeeded = await tapAt(x.toDouble(), y.toDouble());
+      }
+    } else if (action.name == 'type_text') {
+      final text = action.arguments['text'];
+      if (text is String && text.isNotEmpty && text.length <= 5000) {
+        succeeded = await typeText(text);
+      }
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    final frame = screenActive ? await _grabScreen(attempts: 2) : null;
+    final nodes = await readScreenNodes();
+    final verifyText = succeeded
+        ? 'The approved screen action was executed. Check whether it appears successful from the updated screenshot. If no screenshot is available, say the action was sent but could not be verified. The screen node list is local-only and is not provided.'
+        : 'The approved screen action could not be completed by the accessibility service. Explain this briefly.';
+    try {
+      final result = await _generateResponse(
+        [ChatMessage(role: MessageRole.user, text: verifyText)],
+        screenshot: frame,
+        enableScreenActions: false,
+      );
+      final note = result.text.isEmpty
+          ? (succeeded
+                ? 'The action was completed.'
+                : 'The action could not be completed.')
+          : result.text;
+      messages.add(ChatMessage(role: MessageRole.assistant, text: note));
+    } catch (_) {
+      messages.add(
+        ChatMessage(
+          role: MessageRole.assistant,
+          text: succeeded
+              ? 'The action was sent. I could not verify the result.'
+              : 'The screen action could not be completed.',
+        ),
+      );
+    }
+    if (nodes.isNotEmpty) {
+      notice = 'Screen re-read complete. The UI tree stayed on this device.';
+    }
+    _isThinking = false;
+    notifyListeners();
+  }
+
+  Future<AiResponse> _generateResponse(
+    List<ChatMessage> history, {
+    Uint8List? screenshot,
+    bool enableScreenActions = false,
+  }) => settings.provider == 'cloudflare'
+      ? _cloudflare.generate(
+          accountId: settings.cloudflareAccountId,
+          apiToken: settings.cloudflareApiToken,
+          model: settings.cloudflareModel,
+          history: history,
+          screenshot: screenshot,
+          localeHint: settings.voiceLocale,
+          enableScreenActions: enableScreenActions,
+        )
+      : settings.provider == 'groq'
+      ? _groq.generate(
+          apiKey: settings.groqApiKey,
+          model: settings.groqModel,
+          history: history,
+          screenshot: screenshot,
+          localeHint: settings.voiceLocale,
+          enableScreenActions: enableScreenActions,
+        )
+      : _gemini.generate(
+          apiKey: settings.apiKey,
+          model: settings.model,
+          history: history,
+          screenshot: screenshot,
+          localeHint: settings.voiceLocale,
+          enableScreenActions: enableScreenActions,
+        );
 
   @override
   void dispose() {
