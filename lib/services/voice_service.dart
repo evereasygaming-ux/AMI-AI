@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -60,13 +62,21 @@ class VoiceService {
   Future<bool> initializeTts() async {
     if (_ttsReady) return true;
     try {
-      try {
-        await _tts.setEngine('com.google.android.tts');
-      } catch (_) {}
+      if (Platform.isAndroid) {
+        try {
+          await _tts.setEngine('com.google.android.tts');
+        } catch (_) {}
+      }
       await _tts.awaitSpeakCompletion(true);
-      await _tts.setSpeechRate(0.5);
+      await _tts.setSpeechRate(0.47);
       await _tts.setPitch(1.0);
       await _tts.setVolume(1.0);
+      if (Platform.isIOS) {
+        await _tts.setIosAudioCategory(IosTextToSpeechAudioCategory.playback, [
+          IosTextToSpeechAudioCategoryOptions.defaultToSpeaker,
+          IosTextToSpeechAudioCategoryOptions.allowBluetooth,
+        ]);
+      }
       _ttsReady = true;
     } catch (_) {
       _ttsReady = false;
@@ -130,18 +140,25 @@ class VoiceService {
 
   Future<void> speak(String text, {String localeId = 'auto'}) async {
     if (_disposed || text.trim().isEmpty) return;
-    await initializeTts();
+    if (!await initializeTts()) return;
     await stopListening();
     try {
       await _tts.stop();
       final language = await _resolveLanguage(text, localeId);
       await _tts.setLanguage(language);
       await _applyBestVoice(language);
-      await _tts.speak(text);
+      await _tts.speak(_prepareTextForSpeech(text));
     } catch (_) {
       _setSpeaking(false);
     }
   }
+
+  String _prepareTextForSpeech(String text) => text
+      .replaceAll(RegExp(r'[\r\n]+'), ' ')
+      .replaceAll(RegExp(r'[-–—]+'), ' ')
+      .replaceAll('।', '। ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
   Future<void> _applyBestVoice(String language) async {
     final cached = _voiceCache[language];
@@ -164,7 +181,10 @@ class VoiceService {
         raw.forEach((key, value) {
           if (key != null && value != null) voice['$key'] = '$value';
         });
-        final locale = (voice['locale'] ?? '').toLowerCase();
+        final locale = (voice['locale'] ?? '').toLowerCase().replaceAll(
+          '_',
+          '-',
+        );
         if (locale != target &&
             locale != base &&
             !locale.startsWith('$base-')) {
@@ -201,10 +221,7 @@ class VoiceService {
       }
       final name = best?['name'];
       if (name != null && name.isNotEmpty) {
-        final selection = {
-          'name': name,
-          'locale': best?['locale'] ?? language,
-        };
+        final selection = {'name': name, 'locale': best?['locale'] ?? language};
         await _tts.setVoice(selection);
         _voiceCache[language] = selection;
       }
@@ -214,12 +231,22 @@ class VoiceService {
   Future<String> _resolveLanguage(String text, String requested) async {
     if (requested != 'auto') return requested;
     if (RegExp(r'[\u0980-\u09FF]').hasMatch(text)) {
-      final available = await _tts.isLanguageAvailable('bn-IN');
-      if (available == true) return 'bn-IN';
+      if (await _isLanguageAvailable('bn-IN')) return 'bn-IN';
+    }
+    if (RegExp(r'[\u0900-\u097F]').hasMatch(text)) {
+      if (await _isLanguageAvailable('hi-IN')) return 'hi-IN';
     }
     final deviceLocale = await _tts.getDefaultVoice;
     final locale = deviceLocale is Map ? deviceLocale['locale'] : null;
     return locale is String && locale.isNotEmpty ? locale : 'en-US';
+  }
+
+  Future<bool> _isLanguageAvailable(String language) async {
+    try {
+      return await _tts.isLanguageAvailable(language) == true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> stopSpeaking() async {
