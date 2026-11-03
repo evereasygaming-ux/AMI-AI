@@ -26,7 +26,8 @@ Gemini, Groq, or Cloudflare Workers AI.
 - API keys are stored locally with `shared_preferences`; requests and attached
   screen images go only to the selected provider.
 - Dark, glass-style UI with an animated voice orb.
-- Release APK built automatically on GitHub Actions.
+- GitHub Actions runs Dart analysis and Flutter tests before building the
+  release APK.
 
 ## Supported models
 
