@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'models/chat_message.dart';
 import 'services/accessibility_bridge.dart';
 import 'services/gemini_service.dart';
+import 'services/groq_service.dart';
 import 'services/overlay_service.dart';
 import 'services/screen_capture_service.dart';
 import 'services/settings_service.dart';
@@ -15,12 +16,14 @@ class AmiController extends ChangeNotifier {
   AmiController({
     SettingsService? settingsService,
     GeminiService? gemini,
+    GroqService? groq,
     ScreenCaptureService? screen,
     VoiceService? voice,
     OverlayService? overlay,
     AccessibilityBridge? accessibility,
   })  : _settingsService = settingsService ?? SettingsService(),
         _gemini = gemini ?? GeminiService(),
+        _groq = groq ?? GroqService(),
         _screen = screen ?? ScreenCaptureService(),
         _voice = voice ?? VoiceService(),
         _overlay = overlay ?? OverlayService(),
@@ -37,6 +40,7 @@ class AmiController extends ChangeNotifier {
 
   final SettingsService _settingsService;
   final GeminiService _gemini;
+  final GroqService _groq;
   final ScreenCaptureService _screen;
   final VoiceService _voice;
   final OverlayService _overlay;
@@ -348,7 +352,9 @@ class AmiController extends ChangeNotifier {
     if (trimmed.isEmpty || _isThinking) return;
 
     if (!hasApiKey) {
-      notice = 'Add your Gemini API key in Settings to chat with AMI.';
+      notice = settings.provider == 'groq'
+          ? 'Add your Groq API key in Settings to chat with AMI.'
+          : 'Add your Gemini API key in Settings to chat with AMI.';
       messages.add(ChatMessage(
         role: MessageRole.assistant,
         text: notice!,
@@ -379,13 +385,21 @@ class AmiController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final reply = await _gemini.generate(
-        apiKey: settings.apiKey,
-        model: settings.model,
-        history: messages,
-        screenshot: frame,
-        localeHint: settings.voiceLocale,
-      );
+      final reply = settings.provider == 'groq'
+          ? await _groq.generate(
+              apiKey: settings.groqApiKey,
+              model: settings.groqModel,
+              history: messages,
+              screenshot: frame,
+              localeHint: settings.voiceLocale,
+            )
+          : await _gemini.generate(
+              apiKey: settings.apiKey,
+              model: settings.model,
+              history: messages,
+              screenshot: frame,
+              localeHint: settings.voiceLocale,
+            );
       messages.add(ChatMessage(role: MessageRole.assistant, text: reply));
       _isThinking = false;
       notifyListeners();
@@ -396,7 +410,7 @@ class AmiController extends ChangeNotifier {
       _isThinking = false;
       final message = error is GeminiException
           ? error.message
-          : 'Something went wrong while talking to Gemini. Please try again.';
+          : 'Something went wrong while talking to ${settings.provider == 'groq' ? 'Groq' : 'Gemini'}. Please try again.';
       messages.add(ChatMessage(
         role: MessageRole.assistant,
         text: message,

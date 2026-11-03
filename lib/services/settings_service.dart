@@ -4,6 +4,9 @@ class AmiSettings {
   const AmiSettings({
     this.apiKey = '',
     this.model = 'gemini-3.6-flash',
+    this.provider = 'gemini',
+    this.groqApiKey = '',
+    this.groqModel = 'qwen/qwen3.8-27b',
     this.voiceLocale = 'auto',
     this.autoSpeak = true,
     this.autoScreen = true,
@@ -13,17 +16,23 @@ class AmiSettings {
 
   final String apiKey;
   final String model;
+  final String provider;
+  final String groqApiKey;
+  final String groqModel;
   final String voiceLocale;
   final bool autoSpeak;
   final bool autoScreen;
   final bool floatingRobot;
   final bool accessibilityConsent;
 
-  bool get hasApiKey => apiKey.trim().isNotEmpty;
+  bool get hasApiKey => (provider == 'groq' ? groqApiKey : apiKey).trim().isNotEmpty;
 
   AmiSettings copyWith({
     String? apiKey,
     String? model,
+    String? provider,
+    String? groqApiKey,
+    String? groqModel,
     String? voiceLocale,
     bool? autoSpeak,
     bool? autoScreen,
@@ -33,6 +42,9 @@ class AmiSettings {
       AmiSettings(
         apiKey: apiKey ?? this.apiKey,
         model: model ?? this.model,
+        provider: provider ?? this.provider,
+        groqApiKey: groqApiKey ?? this.groqApiKey,
+        groqModel: groqModel ?? this.groqModel,
         voiceLocale: voiceLocale ?? this.voiceLocale,
         autoSpeak: autoSpeak ?? this.autoSpeak,
         autoScreen: autoScreen ?? this.autoScreen,
@@ -44,6 +56,9 @@ class AmiSettings {
 class SettingsService {
   static const _kApiKey = 'ami_api_key';
   static const _kModel = 'ami_model';
+  static const _kProvider = 'ami_provider';
+  static const _kGroqApiKey = 'ami_groq_api_key';
+  static const _kGroqModel = 'ami_groq_model';
   static const _kVoiceLocale = 'ami_voice_locale';
   static const _kAutoSpeak = 'ami_auto_speak';
   static const _kAutoScreen = 'ami_auto_screen';
@@ -55,6 +70,9 @@ class SettingsService {
     return AmiSettings(
       apiKey: prefs.getString(_kApiKey) ?? '',
       model: prefs.getString(_kModel) ?? 'gemini-3.6-flash',
+      provider: prefs.getString(_kProvider) ?? 'gemini',
+      groqApiKey: prefs.getString(_kGroqApiKey) ?? '',
+      groqModel: prefs.getString(_kGroqModel) ?? 'qwen/qwen3.8-27b',
       voiceLocale: prefs.getString(_kVoiceLocale) ?? 'auto',
       autoSpeak: prefs.getBool(_kAutoSpeak) ?? true,
       autoScreen: prefs.getBool(_kAutoScreen) ?? true,
@@ -67,6 +85,9 @@ class SettingsService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kApiKey, settings.apiKey.trim());
     await prefs.setString(_kModel, settings.model.trim());
+    await prefs.setString(_kProvider, settings.provider);
+    await prefs.setString(_kGroqApiKey, settings.groqApiKey.trim());
+    await prefs.setString(_kGroqModel, settings.groqModel.trim());
     await prefs.setString(_kVoiceLocale, settings.voiceLocale);
     await prefs.setBool(_kAutoSpeak, settings.autoSpeak);
     await prefs.setBool(_kAutoScreen, settings.autoScreen);

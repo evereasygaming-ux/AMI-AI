@@ -30,7 +30,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   };
 
   late final TextEditingController _keyController;
+  late final TextEditingController _groqKeyController;
   late final TextEditingController _modelController;
+  late final TextEditingController _groqModelController;
+  late String _provider;
   late String _voiceLocale;
   late bool _autoSpeak;
   late bool _autoScreen;
@@ -42,7 +45,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     final settings = widget.controller.settings;
     _keyController = TextEditingController(text: settings.apiKey);
+    _groqKeyController = TextEditingController(text: settings.groqApiKey);
     _modelController = TextEditingController(text: settings.model);
+    _groqModelController = TextEditingController(text: settings.groqModel);
+    _provider = settings.provider;
     _voiceLocale = settings.voiceLocale;
     _autoSpeak = settings.autoSpeak;
     _autoScreen = settings.autoScreen;
@@ -52,7 +58,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _keyController.dispose();
+    _groqKeyController.dispose();
     _modelController.dispose();
+    _groqModelController.dispose();
     super.dispose();
   }
 
@@ -62,6 +70,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       model: _modelController.text.trim().isEmpty
           ? 'gemini-3.6-flash'
           : _modelController.text.trim(),
+      provider: _provider,
+      groqApiKey: _groqKeyController.text.trim(),
+      groqModel: _groqModelController.text.trim().isEmpty
+          ? 'qwen/qwen3.8-27b'
+          : _groqModelController.text.trim(),
       voiceLocale: _voiceLocale,
       autoSpeak: _autoSpeak,
       autoScreen: _autoScreen,
@@ -76,7 +89,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         content: Text(
           next.hasApiKey
               ? 'Saved. AMI is ready — tap the orb and talk.'
-              : 'Saved. Add a Gemini API key to start chatting.',
+              : 'Saved. Add a ${_provider == 'groq' ? 'Groq' : 'Gemini'} API key to start chatting.',
         ),
       ),
     );
@@ -114,9 +127,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           content: const SingleChildScrollView(
             child: Text(
               'AMI can read visible screen text, control labels, and element positions. '
-              'This phase keeps that screen tree on your phone and does not send it to Gemini. '
-              'The service exposes tap and text-entry methods, but this phase does not connect them to Gemini. '
-              'Existing screen sharing sends a screenshot to Gemini only when it is attached to a question. '
+              'This phase keeps that screen tree on your phone and does not send it to the selected AI provider. '
+              'The service exposes tap and text-entry methods, but this phase does not connect them to an AI provider. '
+              'Existing screen sharing sends a screenshot to the selected provider only when attached to a question. '
               'You can turn this access off any time in Android Accessibility settings.',
             ),
           ),
@@ -162,7 +175,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: TextStyle(fontSize: 12.5, color: AmiColors.muted),
         ),
         const SizedBox(height: 22),
-        _label('GEMINI CONNECTION'),
+        _label('AI PROVIDER'),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: _provider,
+          decoration: const InputDecoration(isDense: true),
+          items: const [
+            DropdownMenuItem(value: 'gemini', child: Text('Gemini (default)')),
+            DropdownMenuItem(value: 'groq', child: Text('Groq')),
+          ],
+          onChanged: (value) => setState(() => _provider = value ?? 'gemini'),
+        ),
+        const SizedBox(height: 18),
+        _label('API KEYS'),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.all(16),
@@ -186,6 +211,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
               const SizedBox(height: 10),
+              const Text('Gemini API key', style: TextStyle(fontSize: 12)),
+              const SizedBox(height: 6),
               TextField(
                 controller: _keyController,
                 obscureText: _obscure,
@@ -233,8 +260,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
         ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: glassPanel(radius: 20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Groq API key', style: TextStyle(fontSize: 12)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _groqKeyController,
+              obscureText: _obscure,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: const InputDecoration(hintText: 'gsk_… your Groq API key', isDense: true),
+            ),
+            const SizedBox(height: 7),
+            const Text('Create a key at console.groq.com/keys. It stays on this phone and is sent only to Groq when Groq is selected.', style: TextStyle(fontSize: 10.5, color: AmiColors.muted, height: 1.4)),
+          ]),
+        ),
         const SizedBox(height: 20),
-        _label('MODEL'),
+        _label(_provider == 'groq' ? 'GROQ MODEL' : 'GEMINI MODEL'),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.all(16),
@@ -243,12 +288,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextField(
-                controller: _modelController,
+                controller: _provider == 'groq' ? _groqModelController : _modelController,
                 autocorrect: false,
                 enableSuggestions: false,
                 style: const TextStyle(fontSize: 13),
-                decoration: const InputDecoration(
-                  hintText: 'gemini-3.6-flash',
+                decoration: InputDecoration(
+                  hintText: _provider == 'groq' ? 'qwen/qwen3.8-27b' : 'gemini-3.6-flash',
                   isDense: true,
                 ),
               ),
@@ -257,10 +302,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 spacing: 7,
                 runSpacing: 7,
                 children: [
-                  for (final model in _models)
+                  for (final model in (_provider == 'groq' ? const ['qwen/qwen3.8-27b'] : _models))
                     GestureDetector(
                       onTap: () => setState(() {
-                        _modelController.text = model;
+                        (_provider == 'groq' ? _groqModelController : _modelController).text = model;
                       }),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -268,12 +313,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: _modelController.text == model
+                          color: (_provider == 'groq' ? _groqModelController.text : _modelController.text) == model
                               ? AmiColors.cyan.withValues(alpha: .14)
                               : AmiColors.panelSoft,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: _modelController.text == model
+                            color: (_provider == 'groq' ? _groqModelController.text : _modelController.text) == model
                                 ? AmiColors.cyan.withValues(alpha: .4)
                                 : Colors.white.withValues(alpha: .06),
                           ),
@@ -282,7 +327,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           model,
                           style: TextStyle(
                             fontSize: 10.5,
-                            color: _modelController.text == model
+                            color: (_provider == 'groq' ? _groqModelController.text : _modelController.text) == model
                                 ? AmiColors.cyan
                                 : AmiColors.muted,
                           ),
@@ -419,7 +464,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 9),
               const Text(
-                'Optional Android access for reading visible controls. The current phase does not connect screen actions to Gemini. '
+                'Optional Android access for reading visible controls. The current phase does not connect screen actions to an AI provider. '
                 'AMI asks for your consent before opening system settings.',
                 style: TextStyle(
                   fontSize: 10.5,
@@ -450,13 +495,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _PrivacyLine(
                 icon: Icons.phone_android_rounded,
                 text:
-                    'Screen frames are captured on your phone. Only the frame attached to a question is sent to Gemini.',
+                    'Screen frames are captured on your phone. Only a frame attached to a question is sent to the selected provider (Gemini or Groq).',
               ),
               SizedBox(height: 11),
               _PrivacyLine(
                 icon: Icons.lock_outline_rounded,
                 text:
-                    'Your API key is saved locally and sent only to Google Gemini.',
+                    'API keys are saved locally. Only the selected provider’s key is sent with its requests.',
               ),
               SizedBox(height: 11),
               _PrivacyLine(
@@ -496,7 +541,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 10),
         const Center(
           child: Text(
-            'AMI v1.0  •  Gemini multimodal',
+            'AMI v1.0  •  Gemini + Groq',
             style: TextStyle(fontSize: 10, color: AmiColors.muted),
           ),
         ),

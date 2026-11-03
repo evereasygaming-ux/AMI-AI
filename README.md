@@ -2,7 +2,7 @@
 
 AMI (AI Multimodal Intelligence) is a screen-aware voice companion for Android.
 Talk to it, share your screen, and get short, human answers powered by Google
-Gemini.
+Gemini or Groq.
 
 [![Build Android APK](https://github.com/evereasygaming-ux/AMI-AI/actions/workflows/build-apk.yml/badge.svg)](https://github.com/evereasygaming-ux/AMI-AI/actions/workflows/build-apk.yml)
 
@@ -16,14 +16,15 @@ Gemini.
 - Optional Android accessibility foundation: after an in-app disclosure and
   explicit opt-in, AMI exposes active-screen UI nodes plus tap and text-entry
   methods through its Dart/Kotlin bridge. This phase keeps the node tree on the
-  phone and does not connect it to Gemini.
+  phone and does not connect it to either AI provider.
 - Screen awareness: share your screen so AMI can read what is visible and answer
   questions about "this" or "my screen".
 - Quick delayed screen look with a countdown before capturing.
 - Chat history with a dedicated chat screen.
-- Multiple Gemini models selectable from Settings.
-- On-device settings: your API key is stored locally with
-  `shared_preferences` and is sent only to the Gemini API.
+- Select Gemini (default) or Groq from Settings, with separate API keys and
+  model settings for each provider.
+- API keys are stored locally with `shared_preferences`; requests and attached
+  screen images go only to the selected provider.
 - Dark, glass-style UI with an animated voice orb.
 - Release APK built automatically on GitHub Actions.
 
@@ -34,6 +35,7 @@ Gemini.
 | Gemini 3.5 Flash Lite | `gemini-3.5-flash-lite` | Fastest and lightest |
 | Gemini 3.6 Flash | `gemini-3.6-flash` | Default; best speed/quality balance |
 | Gemini 3.1 Pro | `gemini-3.1-pro` | Strongest reasoning |
+| Groq Qwen 3.8 27B | `qwen/qwen3.8-27b` | Text and image input |
 
 You can also type a different model ID manually in Settings.
 
@@ -41,9 +43,10 @@ You can also type a different model ID manually in Settings.
 
 - Flutter 3.47.7 / Dart 3.13.5
 - Google Gemini API (`generativelanguage.googleapis.com`, `v1beta`)
+- Groq Chat Completions API (`api.groq.com/openai/v1`)
 - `speech_to_text` for voice input
 - `flutter_tts` for spoken replies
-- `http` for Gemini requests
+- `http` for Gemini and Groq requests
 - `shared_preferences` for local settings
 - Kotlin Android `MediaProjection` service for screen capture
 - Kotlin Android Accessibility Service with a user-consent disclosure and
@@ -54,7 +57,8 @@ You can also type a different model ID manually in Settings.
 - Flutter 3.47.7 or newer with Dart 3.13.5
 - JDK 17
 - Android SDK (compile/target SDK provided by Flutter)
-- A Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey)
+- A Gemini key from [Google AI Studio](https://aistudio.google.com/apikey) or
+  a Groq key from [Groq Console](https://console.groq.com/keys)
 - An Android device or emulator (screen capture is Android-only)
 
 ## Getting started
@@ -66,9 +70,9 @@ flutter pub get
 flutter run
 ```
 
-Then open **Settings**, paste your Gemini API key, choose a model, and start
-talking. Screen sharing and microphone permissions are requested by Android at
-runtime.
+Then open **Settings**, select Gemini or Groq, paste that provider's API key,
+choose its model, and start talking. Screen sharing and microphone permissions
+are requested by Android at runtime.
 
 ### Floating robot
 
@@ -77,7 +81,7 @@ for the **Display over other apps** permission. Once granted, turn the switch on
 again if needed. The robot then floats above any app:
 
 - Drag the robot to move it anywhere on screen.
-- Tap the robot to capture the current screen, ask Gemini what is on it, and
+- Tap the robot to capture the current screen, ask the selected provider what is on it, and
   hear the answer aloud.
 - Screen reading requires screen context to be on. If it is off, tapping the
   robot opens AMI so you can enable it.
@@ -127,12 +131,13 @@ Also make sure `android/gradlew` uses a portable shebang
 ```text
 lib/
   main.dart                     App entry point and tab shell
-  ami_controller.dart           App state, voice flow, screen flow, Gemini calls
+  ami_controller.dart           App state, voice/screen flow, provider routing
   app_theme.dart                Colors, gradients, glass panels
   models/chat_message.dart      Chat message model
   screens/                      Home, chat, and settings screens
   services/
     gemini_service.dart         Gemini API client and error handling
+    groq_service.dart           Groq API client and error handling
     overlay_service.dart        Floating robot bridge
     accessibility_bridge.dart   Accessibility Service bridge
     settings_service.dart       Local settings persistence
@@ -150,7 +155,7 @@ android/
 
 | Permission | Why it is needed |
 | --- | --- |
-| `INTERNET` | Send requests to the Gemini API |
+| `INTERNET` | Send requests to the selected AI provider |
 | `RECORD_AUDIO` | Voice input |
 | `FOREGROUND_SERVICE` | Keep screen capture running |
 | `FOREGROUND_SERVICE_MEDIA_PROJECTION` | Android 14+ screen capture service |
@@ -161,13 +166,13 @@ android/
 
 ## Privacy
 
-- The Gemini API key is stored only on the device.
+- Both provider API keys are stored only on the device.
 - Chat history is kept in memory for the current session.
 - Screenshots are captured only while screen sharing is active and are sent only
-  to the Gemini API as part of your request.
+  to whichever provider is selected as part of your request.
 - The optional accessibility bridge returns a bounded UI-node list to AMI on the
   phone. Password-field text and descriptions are redacted; text entry into
-  password fields is blocked. The node list is not sent to Gemini in this phase.
+  password fields is blocked. The node list is not sent to either provider.
 - The floating robot does not read the screen on its own. A capture happens only
   when you tap it while screen context is on.
 - No analytics, tracking, or third-party servers are used by this app.
