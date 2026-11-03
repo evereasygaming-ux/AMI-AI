@@ -16,10 +16,9 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   static const _models = [
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-pro',
-    'gemini-2.0-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.6-flash',
+    'gemini-3.1-pro',
   ];
 
   static const _locales = {
@@ -59,7 +58,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final next = AmiSettings(
       apiKey: _keyController.text.trim(),
       model: _modelController.text.trim().isEmpty
-          ? 'gemini-2.5-flash'
+          ? 'gemini-3.6-flash'
           : _modelController.text.trim(),
       voiceLocale: _voiceLocale,
       autoSpeak: _autoSpeak,
@@ -186,7 +185,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 enableSuggestions: false,
                 style: const TextStyle(fontSize: 13),
                 decoration: const InputDecoration(
-                  hintText: 'gemini-2.5-flash',
+                  hintText: 'gemini-3.6-flash',
                   isDense: true,
                 ),
               ),
@@ -231,7 +230,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 9),
               const Text(
-                'gemini-2.5-flash is the best balance of speed and screen understanding.',
+                'gemini-3.6-flash is the best balance of speed and screen understanding.',
                 style: TextStyle(
                   fontSize: 10.5,
                   color: AmiColors.muted,

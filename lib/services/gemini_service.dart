@@ -34,7 +34,7 @@ class GeminiService {
       );
     }
 
-    final modelId = model.trim().isEmpty ? 'gemini-2.5-flash' : model.trim();
+    final modelId = model.trim().isEmpty ? 'gemini-3.6-flash' : model.trim();
     final uri = Uri.parse('$_endpoint/models/$modelId:generateContent');
 
     final contents = <Map<String, dynamic>>[];
@@ -163,7 +163,7 @@ class GeminiService {
       return 'Your Gemini API key was rejected. Open Settings and paste a valid key.';
     }
     if (status == 404) {
-      return 'Model not found. Set the model to gemini-2.5-flash in Settings.';
+      return 'Model not found. Set the model to gemini-3.6-flash in Settings.';
     }
     if (status == 429) {
       return 'Gemini is rate limited right now. Wait a moment and try again.';

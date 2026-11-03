@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AmiSettings {
   const AmiSettings({
     this.apiKey = '',
-    this.model = 'gemini-2.5-flash',
+    this.model = 'gemini-3.6-flash',
     this.voiceLocale = 'auto',
     this.autoSpeak = true,
     this.autoScreen = true,
@@ -44,7 +44,7 @@ class SettingsService {
     final prefs = await SharedPreferences.getInstance();
     return AmiSettings(
       apiKey: prefs.getString(_kApiKey) ?? '',
-      model: prefs.getString(_kModel) ?? 'gemini-2.5-flash',
+      model: prefs.getString(_kModel) ?? 'gemini-3.6-flash',
       voiceLocale: prefs.getString(_kVoiceLocale) ?? 'auto',
       autoSpeak: prefs.getBool(_kAutoSpeak) ?? true,
       autoScreen: prefs.getBool(_kAutoScreen) ?? true,
