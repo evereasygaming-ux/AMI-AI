@@ -19,6 +19,9 @@ Gemini, Groq, or Cloudflare Workers AI.
   AI provider can propose one tap or exact text entry from an attached
   screenshot; each action waits for explicit approval. The node tree stays on
   the phone, and password fields reject text entry.
+- Optional real-time UI-tree stream to AMI's local Dart state, with a separate
+  opt-in, password-value redaction, bounded traversal, node recycling, and a
+  500 ms maximum update rate. The stream is not sent to AI providers.
 - Screen awareness: share your screen so AMI can read what is visible and answer
   questions about "this" or "my screen".
 - Quick delayed screen look with a countdown before capturing.
@@ -148,6 +151,7 @@ lib/
     cloudflare_service.dart     Cloudflare Workers AI client and error handling
     overlay_service.dart        Floating robot bridge
     accessibility_bridge.dart   Accessibility Service bridge
+    accessibility_manager.dart  Local UI-tree EventChannel stream and controls
     settings_service.dart       Local settings persistence
     screen_capture_service.dart Android screen capture bridge
     voice_service.dart          Speech-to-text, neural voice selection, TTS

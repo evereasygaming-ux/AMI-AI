@@ -5,8 +5,13 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import io.flutter.plugin.common.EventChannel
+import org.json.JSONArray
 
 class AmiAccessibilityService : AccessibilityService() {
 
@@ -16,18 +21,47 @@ class AmiAccessibilityService : AccessibilityService() {
         private const val MAX_TEXT_LENGTH = 300
         private const val MAX_INPUT_LENGTH = 5000
         private const val MAX_VISITED_NODES = 1200
+        private const val STREAM_INTERVAL_MS = 500L
 
         @Volatile
         var instance: AmiAccessibilityService? = null
             private set
+
+        @Volatile
+        var streamSink: EventChannel.EventSink? = null
+    }
+
+    private val streamHandler = Handler(Looper.getMainLooper())
+    private var streamScheduled = false
+    private var lastStreamAt = 0L
+    private val streamRunnable = Runnable {
+        streamScheduled = false
+        if (streamSink != null) {
+            streamSink?.success(JSONArray(getScreenNodes()).toString())
+            lastStreamAt = SystemClock.elapsedRealtime()
+        }
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        streamCurrentScreen()
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null || streamSink == null || streamScheduled) return
+        scheduleScreenStream()
+    }
+
+    private fun scheduleScreenStream() {
+        if (streamSink == null || streamScheduled) return
+        val elapsed = SystemClock.elapsedRealtime() - lastStreamAt
+        val delay = (STREAM_INTERVAL_MS - elapsed).coerceAtLeast(0L)
+        streamScheduled = true
+        streamHandler.postDelayed(streamRunnable, delay)
+    }
+
+    fun streamCurrentScreen() = scheduleScreenStream()
 
     override fun onInterrupt() = Unit
 
@@ -56,10 +90,21 @@ class AmiAccessibilityService : AccessibilityService() {
             return
         }
 
-        val target = findClickableNode(root, screenX, screenY, IntArray(1), 0)
-        if (target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) {
-            onResult(true)
-            return
+        val target = try {
+            findClickableNode(root, screenX, screenY, IntArray(1), 0)
+        } finally {
+            root.recycle()
+        }
+        if (target != null) {
+            val clicked = try {
+                target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            } finally {
+                target.recycle()
+            }
+            if (clicked) {
+                onResult(true)
+                return
+            }
         }
 
         val path = Path().apply { moveTo(screenX, screenY) }
@@ -85,16 +130,23 @@ class AmiAccessibilityService : AccessibilityService() {
     fun typeText(text: String): Boolean {
         if (text.length > MAX_INPUT_LENGTH) return false
         val root = rootInActiveWindow ?: return false
-        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
-        if (!focused.isEditable || focused.isPassword) return false
-
-        val arguments = Bundle().apply {
-            putCharSequence(
-                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                text
-            )
+        try {
+            val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+            try {
+                if (!focused.isEditable || focused.isPassword) return false
+                val arguments = Bundle().apply {
+                    putCharSequence(
+                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                        text
+                    )
+                }
+                return focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+            } finally {
+                focused.recycle()
+            }
+        } finally {
+            root.recycle()
         }
-        return focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
     }
 
     private fun appendNode(
@@ -103,37 +155,39 @@ class AmiAccessibilityService : AccessibilityService() {
         visited: IntArray,
         depth: Int
     ) {
-        if (nodes.size >= MAX_NODES || depth > MAX_DEPTH ||
-            visited[0] >= MAX_VISITED_NODES
-        ) return
-        visited[0]++
-
-        if (node.isVisibleToUser) {
-            val bounds = Rect()
-            node.getBoundsInScreen(bounds)
-            val password = node.isPassword
-            nodes.add(
-                mapOf(
-                    "index" to nodes.size,
-                    "text" to if (password) null else node.text?.toString()?.take(MAX_TEXT_LENGTH),
-                    "contentDescription" to if (password) null else
-                        node.contentDescription?.toString()?.take(MAX_TEXT_LENGTH),
-                    "className" to node.className?.toString(),
-                    "viewId" to node.viewIdResourceName,
-                    "bounds" to listOf(bounds.left, bounds.top, bounds.right, bounds.bottom),
-                    "clickable" to node.isClickable,
-                    "editable" to node.isEditable,
-                    "focused" to node.isFocused,
-                    "enabled" to node.isEnabled,
-                    "scrollable" to node.isScrollable,
-                    "password" to password
-                )
-            )
+        if (nodes.size >= MAX_NODES || depth > MAX_DEPTH || visited[0] >= MAX_VISITED_NODES) {
+            node.recycle()
+            return
         }
-
-        for (index in 0 until node.childCount) {
-            if (nodes.size >= MAX_NODES) break
-            node.getChild(index)?.let { appendNode(it, nodes, visited, depth + 1) }
+        visited[0]++
+        try {
+            if (node.isVisibleToUser) {
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+                val password = node.isPassword
+                nodes.add(
+                    mapOf(
+                        "index" to nodes.size,
+                        "text" to if (password) null else node.text?.toString()?.take(MAX_TEXT_LENGTH),
+                        "contentDescription" to if (password) null else node.contentDescription?.toString()?.take(MAX_TEXT_LENGTH),
+                        "className" to node.className?.toString(),
+                        "viewId" to node.viewIdResourceName,
+                        "bounds" to listOf(bounds.left, bounds.top, bounds.right, bounds.bottom),
+                        "clickable" to node.isClickable,
+                        "editable" to node.isEditable,
+                        "focused" to node.isFocused,
+                        "enabled" to node.isEnabled,
+                        "scrollable" to node.isScrollable,
+                        "password" to password
+                    )
+                )
+            }
+            for (index in 0 until node.childCount) {
+                if (nodes.size >= MAX_NODES) break
+                node.getChild(index)?.let { appendNode(it, nodes, visited, depth + 1) }
+            }
+        } finally {
+            node.recycle()
         }
     }
 
@@ -152,12 +206,19 @@ class AmiAccessibilityService : AccessibilityService() {
 
         for (index in node.childCount - 1 downTo 0) {
             val child = node.getChild(index) ?: continue
-            findClickableNode(child, x, y, visited, depth + 1)?.let { return it }
+            val found = try {
+                findClickableNode(child, x, y, visited, depth + 1)
+            } finally {
+                child.recycle()
+            }
+            if (found != null) return found
         }
-        return if (node.isClickable && node.isEnabled) node else null
+        return if (node.isClickable && node.isEnabled) AccessibilityNodeInfo.obtain(node) else null
     }
 
     override fun onDestroy() {
+        streamHandler.removeCallbacks(streamRunnable)
+        streamScheduled = false
         if (instance === this) instance = null
         super.onDestroy()
     }

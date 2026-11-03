@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'models/chat_message.dart';
 import 'models/screen_action.dart';
 import 'services/accessibility_bridge.dart';
+import 'services/accessibility_manager.dart';
 import 'services/cloudflare_service.dart';
 import 'services/gemini_service.dart';
 import 'services/groq_service.dart';
@@ -25,6 +26,7 @@ class AmiController extends ChangeNotifier {
     VoiceService? voice,
     OverlayService? overlay,
     AccessibilityBridge? accessibility,
+    AccessibilityManager? accessibilityManager,
   }) : _settingsService = settingsService ?? SettingsService(),
        _gemini = gemini ?? GeminiService(),
        _groq = groq ?? GroqService(),
@@ -32,7 +34,8 @@ class AmiController extends ChangeNotifier {
        _screen = screen ?? ScreenCaptureService(),
        _voice = voice ?? VoiceService(),
        _overlay = overlay ?? OverlayService(),
-       _accessibility = accessibility ?? AccessibilityBridge() {
+       _accessibility = accessibility ?? AccessibilityBridge(),
+       _accessibilityManager = accessibilityManager ?? AccessibilityManager() {
     _screen.isSharing.addListener(_onScreenChanged);
     _screen.onDelayedCaptureReady = _handleDelayedCapture;
     _overlay.onOrbTap = _handleOrbTap;
@@ -51,6 +54,7 @@ class AmiController extends ChangeNotifier {
   final VoiceService _voice;
   final OverlayService _overlay;
   final AccessibilityBridge _accessibility;
+  final AccessibilityManager _accessibilityManager;
 
   AmiSettings settings = const AmiSettings();
   final List<ChatMessage> messages = [];
@@ -68,6 +72,8 @@ class AmiController extends ChangeNotifier {
   int captureCountdown = 0;
   Uint8List? lastFrame;
   ScreenAction? pendingScreenAction;
+  List<Map<String, dynamic>> screenNodes = const [];
+  StreamSubscription<List<Map<String, dynamic>>>? _screenNodeSubscription;
 
   Timer? _countdownTimer;
   bool _voiceHandled = false;
@@ -475,6 +481,7 @@ class AmiController extends ChangeNotifier {
       await _voice.stopSpeaking();
     }
     await _settingsService.save(next);
+    _syncScreenNodeStream();
     notifyListeners();
   }
 
@@ -514,7 +521,42 @@ class AmiController extends ChangeNotifier {
   Future<void> refreshAccessibilityState() async {
     accessibilityEnabled = await _accessibility.isEnabled();
     accessibilityConnected = await _accessibility.isConnected();
+    _syncScreenNodeStream();
     notifyListeners();
+  }
+
+  Future<void> setScreenNodeStreamConsent(bool enabled) async {
+    settings = settings.copyWith(screenNodeStreamConsent: enabled);
+    await _settingsService.save(settings);
+    _syncScreenNodeStream();
+    notifyListeners();
+  }
+
+  void _syncScreenNodeStream() {
+    if (!settings.screenNodeStreamConsent || !accessibilityConnected) {
+      _screenNodeSubscription?.cancel();
+      _screenNodeSubscription = null;
+      screenNodes = const [];
+      return;
+    }
+    if (_screenNodeSubscription != null) return;
+    _screenNodeSubscription = _accessibilityManager.screenNodeTrees.listen(
+      (nodes) {
+        screenNodes = nodes;
+        notifyListeners();
+      },
+      onError: (Object error) {
+        _screenNodeSubscription = null;
+        screenNodes = const [];
+        notice = 'Live screen text stream stopped. Check Accessibility access.';
+        notifyListeners();
+      },
+      onDone: () {
+        _screenNodeSubscription = null;
+        screenNodes = const [];
+        notifyListeners();
+      },
+    );
   }
 
   Future<bool> openAccessibilitySettings() => _accessibility.openSettings();
@@ -670,6 +712,7 @@ class AmiController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _screenNodeSubscription?.cancel();
     _countdownTimer?.cancel();
     _screen.isSharing.removeListener(_onScreenChanged);
     _screen.onDelayedCaptureReady = null;

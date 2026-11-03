@@ -16,6 +16,7 @@ class AmiSettings {
     this.floatingRobot = false,
     this.accessibilityConsent = false,
     this.screenActionConsent = false,
+    this.screenNodeStreamConsent = false,
   });
 
   final String apiKey;
@@ -32,6 +33,7 @@ class AmiSettings {
   final bool floatingRobot;
   final bool accessibilityConsent;
   final bool screenActionConsent;
+  final bool screenNodeStreamConsent;
 
   bool get hasApiKey => switch (provider) {
     'groq' => groqApiKey.trim().isNotEmpty,
@@ -56,6 +58,7 @@ class AmiSettings {
     bool? floatingRobot,
     bool? accessibilityConsent,
     bool? screenActionConsent,
+    bool? screenNodeStreamConsent,
   }) => AmiSettings(
     apiKey: apiKey ?? this.apiKey,
     model: model ?? this.model,
@@ -71,6 +74,8 @@ class AmiSettings {
     floatingRobot: floatingRobot ?? this.floatingRobot,
     accessibilityConsent: accessibilityConsent ?? this.accessibilityConsent,
     screenActionConsent: screenActionConsent ?? this.screenActionConsent,
+    screenNodeStreamConsent:
+        screenNodeStreamConsent ?? this.screenNodeStreamConsent,
   );
 }
 
@@ -89,6 +94,7 @@ class SettingsService {
   static const _kFloatingRobot = 'ami_floating_robot';
   static const _kAccessibilityConsent = 'ami_accessibility_consent';
   static const _kScreenActionConsent = 'ami_screen_action_consent';
+  static const _kScreenNodeStreamConsent = 'ami_screen_node_stream_consent';
 
   Future<AmiSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -108,6 +114,8 @@ class SettingsService {
       floatingRobot: prefs.getBool(_kFloatingRobot) ?? false,
       accessibilityConsent: prefs.getBool(_kAccessibilityConsent) ?? false,
       screenActionConsent: prefs.getBool(_kScreenActionConsent) ?? false,
+      screenNodeStreamConsent:
+          prefs.getBool(_kScreenNodeStreamConsent) ?? false,
     );
   }
 
@@ -133,5 +141,9 @@ class SettingsService {
     await prefs.setBool(_kFloatingRobot, settings.floatingRobot);
     await prefs.setBool(_kAccessibilityConsent, settings.accessibilityConsent);
     await prefs.setBool(_kScreenActionConsent, settings.screenActionConsent);
+    await prefs.setBool(
+      _kScreenNodeStreamConsent,
+      settings.screenNodeStreamConsent,
+    );
   }
 }

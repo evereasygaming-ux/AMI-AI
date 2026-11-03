@@ -13,6 +13,7 @@ import android.os.Bundle
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
@@ -21,6 +22,7 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL = "ami/screen"
         private const val OVERLAY_CHANNEL = "ami/overlay"
         private const val ACCESSIBILITY_CHANNEL = "ami/accessibility"
+        private const val ACCESSIBILITY_STREAM_CHANNEL = "ami/accessibility_stream"
         private const val REQUEST_PROJECTION = 7101
         private const val REQUEST_NOTIFICATIONS = 7102
         const val EXTRA_ORB_ACTION = "ami_orb_action"
@@ -106,6 +108,29 @@ class MainActivity : FlutterActivity() {
             ACCESSIBILITY_CHANNEL
         )
         accessibilityChannel = channel
+
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            ACCESSIBILITY_STREAM_CHANNEL
+        ).setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                val service = AmiAccessibilityService.instance
+                if (service == null) {
+                    events.error(
+                        "accessibility_unavailable",
+                        "Enable AMI screen interaction in Android Accessibility settings.",
+                        null
+                    )
+                    return
+                }
+                AmiAccessibilityService.streamSink = events
+                service.streamCurrentScreen()
+            }
+
+            override fun onCancel(arguments: Any?) {
+                AmiAccessibilityService.streamSink = null
+            }
+        })
 
         channel.setMethodCallHandler { call, result ->
             when (call.method) {

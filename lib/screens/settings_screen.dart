@@ -101,6 +101,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       floatingRobot: _floatingRobot,
       accessibilityConsent: widget.controller.settings.accessibilityConsent,
       screenActionConsent: widget.controller.settings.screenActionConsent,
+      screenNodeStreamConsent:
+          widget.controller.settings.screenNodeStreamConsent,
     );
     await widget.controller.saveSettings(next);
     if (!mounted) return;
@@ -183,6 +185,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _setScreenNodeStreamConsent(bool enabled) async {
+    if (enabled) {
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Stream visible screen text to AMI?'),
+          content: const Text(
+            'While enabled, AMI reads the active screen UI tree and updates its local state up to twice per second. The tree stays on this phone and is not sent to Gemini, Groq, or Cloudflare. Password field values are redacted. You can turn this off any time here.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Allow local stream'),
+            ),
+          ],
+        ),
+      );
+      if (accepted != true || !mounted) return;
+    }
+    await widget.controller.setScreenNodeStreamConsent(enabled);
   }
 
   @override
@@ -626,6 +654,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: widget.controller.settings.screenActionConsent,
                 onChanged: widget.controller.setScreenActionConsent,
               ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Stream screen UI tree to AMI',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Local Dart state only; password values are redacted. Updates at most every 500 ms.',
+                  style: TextStyle(fontSize: 10.5, color: AmiColors.muted),
+                ),
+                value: widget.controller.settings.screenNodeStreamConsent,
+                onChanged: _setScreenNodeStreamConsent,
+              ),
+              if (widget.controller.settings.screenNodeStreamConsent)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Live UI nodes in AMI: ${widget.controller.screenNodes.length}',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: AmiColors.cyan,
+                    ),
+                  ),
+                ),
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
