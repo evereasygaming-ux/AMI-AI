@@ -1,0 +1,4 @@
+<resources>
+    <string name="accessibility_service_label">AMI screen interaction</string>
+    <string name="accessibility_service_description">Reads visible screen text and controls and performs a tap or enters text when you explicitly request it in AMI.</string>
+</resources>

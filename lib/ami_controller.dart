@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'models/chat_message.dart';
+import 'services/accessibility_bridge.dart';
 import 'services/gemini_service.dart';
 import 'services/overlay_service.dart';
 import 'services/screen_capture_service.dart';
@@ -17,11 +18,13 @@ class AmiController extends ChangeNotifier {
     ScreenCaptureService? screen,
     VoiceService? voice,
     OverlayService? overlay,
+    AccessibilityBridge? accessibility,
   })  : _settingsService = settingsService ?? SettingsService(),
         _gemini = gemini ?? GeminiService(),
         _screen = screen ?? ScreenCaptureService(),
         _voice = voice ?? VoiceService(),
-        _overlay = overlay ?? OverlayService() {
+        _overlay = overlay ?? OverlayService(),
+        _accessibility = accessibility ?? AccessibilityBridge() {
     _screen.isSharing.addListener(_onScreenChanged);
     _screen.onDelayedCaptureReady = _handleDelayedCapture;
     _overlay.onOrbTap = _handleOrbTap;
@@ -37,6 +40,7 @@ class AmiController extends ChangeNotifier {
   final ScreenCaptureService _screen;
   final VoiceService _voice;
   final OverlayService _overlay;
+  final AccessibilityBridge _accessibility;
 
   AmiSettings settings = const AmiSettings();
   final List<ChatMessage> messages = [];
@@ -46,6 +50,8 @@ class AmiController extends ChangeNotifier {
   bool _isThinking = false;
   bool _isSpeaking = false;
   bool screenBusy = false;
+  bool accessibilityEnabled = false;
+  bool accessibilityConnected = false;
   double soundLevel = 0;
   String transcript = '';
   String? notice;
@@ -75,6 +81,7 @@ class AmiController extends ChangeNotifier {
     } catch (_) {
       settings = const AmiSettings();
     }
+    await refreshAccessibilityState();
     if (messages.isEmpty) {
       messages.add(_welcomeMessage());
     }
@@ -442,6 +449,7 @@ class AmiController extends ChangeNotifier {
 
   Future<void> refreshScreenState() async {
     await _screen.refresh();
+    await refreshAccessibilityState();
     if (settings.floatingRobot) {
       unawaited(_overlay.start());
     }
@@ -456,6 +464,29 @@ class AmiController extends ChangeNotifier {
     } else {
       notifyListeners();
     }
+  }
+
+  Future<void> refreshAccessibilityState() async {
+    accessibilityEnabled = await _accessibility.isEnabled();
+    accessibilityConnected = await _accessibility.isConnected();
+    notifyListeners();
+  }
+
+  Future<bool> openAccessibilitySettings() => _accessibility.openSettings();
+
+  Future<List<Map<String, dynamic>>> readScreenNodes() async {
+    if (!settings.accessibilityConsent || !accessibilityConnected) return [];
+    return _accessibility.getScreenNodes();
+  }
+
+  Future<bool> tapAt(double x, double y) async {
+    if (!settings.accessibilityConsent || !accessibilityConnected) return false;
+    return _accessibility.tapAt(x, y);
+  }
+
+  Future<bool> typeText(String text) async {
+    if (!settings.accessibilityConsent || !accessibilityConnected) return false;
+    return _accessibility.typeText(text);
   }
 
   @override

@@ -13,6 +13,10 @@ Gemini.
   from Google Text-to-Speech for the selected language.
 - Floating 3D robot: a tiny animated robot overlays other apps. Tap it to read
   the current screen aloud without leaving the app you are in.
+- Optional Android accessibility foundation: after an in-app disclosure and
+  explicit opt-in, AMI exposes active-screen UI nodes plus tap and text-entry
+  methods through its Dart/Kotlin bridge. This phase keeps the node tree on the
+  phone and does not connect it to Gemini.
 - Screen awareness: share your screen so AMI can read what is visible and answer
   questions about "this" or "my screen".
 - Quick delayed screen look with a countdown before capturing.
@@ -42,6 +46,8 @@ You can also type a different model ID manually in Settings.
 - `http` for Gemini requests
 - `shared_preferences` for local settings
 - Kotlin Android `MediaProjection` service for screen capture
+- Kotlin Android Accessibility Service with a user-consent disclosure and
+  Flutter method-channel bridge
 
 ## Requirements
 
@@ -128,13 +134,15 @@ lib/
   services/
     gemini_service.dart         Gemini API client and error handling
     overlay_service.dart        Floating robot bridge
+    accessibility_bridge.dart   Accessibility Service bridge
     settings_service.dart       Local settings persistence
     screen_capture_service.dart Android screen capture bridge
     voice_service.dart          Speech-to-text, neural voice selection, TTS
   widgets/voice_orb.dart        Animated voice orb
 android/
   app/src/main/kotlin/...       MainActivity, ScreenCaptureService,
-                                FloatingOrbService, RobotOrbView
+                                FloatingOrbService, RobotOrbView,
+                                AmiAccessibilityService
   app/build.gradle.kts          Android app configuration
 ```
 
@@ -149,6 +157,7 @@ android/
 | `FOREGROUND_SERVICE_SPECIAL_USE` | Keep the floating robot service alive |
 | `POST_NOTIFICATIONS` | Show screen-sharing and floating robot notifications |
 | `SYSTEM_ALERT_WINDOW` | Draw the floating robot over other apps |
+| Android Accessibility Service | Optional user-enabled access to visible UI labels and controls; password text is redacted and text entry into password fields is blocked |
 
 ## Privacy
 
@@ -156,6 +165,9 @@ android/
 - Chat history is kept in memory for the current session.
 - Screenshots are captured only while screen sharing is active and are sent only
   to the Gemini API as part of your request.
+- The optional accessibility bridge returns a bounded UI-node list to AMI on the
+  phone. Password-field text and descriptions are redacted; text entry into
+  password fields is blocked. The node list is not sent to Gemini in this phase.
 - The floating robot does not read the screen on its own. A capture happens only
   when you tap it while screen context is on.
 - No analytics, tracking, or third-party servers are used by this app.

@@ -8,6 +8,7 @@ class AmiSettings {
     this.autoSpeak = true,
     this.autoScreen = true,
     this.floatingRobot = false,
+    this.accessibilityConsent = false,
   });
 
   final String apiKey;
@@ -16,6 +17,7 @@ class AmiSettings {
   final bool autoSpeak;
   final bool autoScreen;
   final bool floatingRobot;
+  final bool accessibilityConsent;
 
   bool get hasApiKey => apiKey.trim().isNotEmpty;
 
@@ -26,6 +28,7 @@ class AmiSettings {
     bool? autoSpeak,
     bool? autoScreen,
     bool? floatingRobot,
+    bool? accessibilityConsent,
   }) =>
       AmiSettings(
         apiKey: apiKey ?? this.apiKey,
@@ -34,6 +37,7 @@ class AmiSettings {
         autoSpeak: autoSpeak ?? this.autoSpeak,
         autoScreen: autoScreen ?? this.autoScreen,
         floatingRobot: floatingRobot ?? this.floatingRobot,
+        accessibilityConsent: accessibilityConsent ?? this.accessibilityConsent,
       );
 }
 
@@ -44,6 +48,7 @@ class SettingsService {
   static const _kAutoSpeak = 'ami_auto_speak';
   static const _kAutoScreen = 'ami_auto_screen';
   static const _kFloatingRobot = 'ami_floating_robot';
+  static const _kAccessibilityConsent = 'ami_accessibility_consent';
 
   Future<AmiSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -54,6 +59,7 @@ class SettingsService {
       autoSpeak: prefs.getBool(_kAutoSpeak) ?? true,
       autoScreen: prefs.getBool(_kAutoScreen) ?? true,
       floatingRobot: prefs.getBool(_kFloatingRobot) ?? false,
+      accessibilityConsent: prefs.getBool(_kAccessibilityConsent) ?? false,
     );
   }
 
@@ -65,5 +71,9 @@ class SettingsService {
     await prefs.setBool(_kAutoSpeak, settings.autoSpeak);
     await prefs.setBool(_kAutoScreen, settings.autoScreen);
     await prefs.setBool(_kFloatingRobot, settings.floatingRobot);
+    await prefs.setBool(
+      _kAccessibilityConsent,
+      settings.accessibilityConsent,
+    );
   }
 }

@@ -66,6 +66,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       autoSpeak: _autoSpeak,
       autoScreen: _autoScreen,
       floatingRobot: _floatingRobot,
+      accessibilityConsent:
+          widget.controller.settings.accessibilityConsent,
     );
     await widget.controller.saveSettings(next);
     if (!mounted) return;
@@ -99,6 +101,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
             widget.controller.notice ?? 'Overlay permission is needed.',
           ),
         ),
+      );
+    }
+  }
+
+  Future<void> _openAccessibilitySettings() async {
+    if (!widget.controller.settings.accessibilityConsent) {
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Allow screen interaction?'),
+          content: const SingleChildScrollView(
+            child: Text(
+              'AMI can read visible screen text, control labels, and element positions. '
+              'This phase keeps that screen tree on your phone and does not send it to Gemini. '
+              'The service exposes tap and text-entry methods, but this phase does not connect them to Gemini. '
+              'Existing screen sharing sends a screenshot to Gemini only when it is attached to a question. '
+              'You can turn this access off any time in Android Accessibility settings.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Agree and continue'),
+            ),
+          ],
+        ),
+      );
+      if (accepted != true || !mounted) return;
+      await widget.controller.saveSettings(
+        widget.controller.settings.copyWith(accessibilityConsent: true),
+      );
+    }
+
+    final opened = await widget.controller.openAccessibilitySettings();
+    if (!mounted) return;
+    if (!opened) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open Android Accessibility settings.')),
       );
     }
   }
@@ -332,6 +376,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.layers_outlined,
                 text:
                     'Needs the "Display over other apps" permission. Screen reading works while screen context is on.',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _label('ACCESSIBILITY'),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: glassPanel(radius: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.accessibility_new_rounded,
+                      size: 18, color: AmiColors.cyan),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Screen interaction',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Text(
+                    !widget.controller.settings.accessibilityConsent
+                        ? 'CONSENT NEEDED'
+                        : widget.controller.accessibilityConnected
+                            ? 'ACTIVE'
+                            : widget.controller.accessibilityEnabled
+                                ? 'ENABLED'
+                                : 'OFF',
+                    style: const TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1,
+                      color: AmiColors.muted,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 9),
+              const Text(
+                'Optional Android access for reading visible controls. The current phase does not connect screen actions to Gemini. '
+                'AMI asks for your consent before opening system settings.',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: AmiColors.muted,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _openAccessibilitySettings,
+                  icon: const Icon(Icons.settings_outlined, size: 17),
+                  label: const Text('Open Android Accessibility settings'),
+                ),
               ),
             ],
           ),

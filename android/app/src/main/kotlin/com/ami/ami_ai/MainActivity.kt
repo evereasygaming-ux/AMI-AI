@@ -2,6 +2,7 @@ package com.ami.ami_ai
 
 import android.Manifest
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -19,6 +20,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "ami/screen"
         private const val OVERLAY_CHANNEL = "ami/overlay"
+        private const val ACCESSIBILITY_CHANNEL = "ami/accessibility"
         private const val REQUEST_PROJECTION = 7101
         private const val REQUEST_NOTIFICATIONS = 7102
         const val EXTRA_ORB_ACTION = "ami_orb_action"
@@ -27,6 +29,7 @@ class MainActivity : FlutterActivity() {
 
     private var screenChannel: MethodChannel? = null
     private var overlayChannel: MethodChannel? = null
+    private var accessibilityChannel: MethodChannel? = null
     private var pendingCaptureResult: MethodChannel.Result? = null
     private var pendingOrbAction: String? = null
 
@@ -94,6 +97,85 @@ class MainActivity : FlutterActivity() {
         }
 
         setupOverlayChannel(flutterEngine)
+        setupAccessibilityChannel(flutterEngine)
+    }
+
+    private fun setupAccessibilityChannel(flutterEngine: FlutterEngine) {
+        val channel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            ACCESSIBILITY_CHANNEL
+        )
+        accessibilityChannel = channel
+
+        channel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isEnabled" -> result.success(isAmiAccessibilityEnabled())
+                "isConnected" ->
+                    result.success(AmiAccessibilityService.instance != null)
+                "openSettings" -> {
+                    try {
+                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        result.success(true)
+                    } catch (error: Throwable) {
+                        result.error("accessibility_settings", error.message, null)
+                    }
+                }
+                "getScreenNodes" -> {
+                    val service = AmiAccessibilityService.instance
+                    if (service == null) {
+                        result.error(
+                            "accessibility_unavailable",
+                            "Enable AMI screen interaction in Android Accessibility settings.",
+                            null
+                        )
+                    } else {
+                        result.success(service.getScreenNodes())
+                    }
+                }
+                "tapAt" -> {
+                    val x = call.argument<Number>("x")?.toFloat()
+                    val y = call.argument<Number>("y")?.toFloat()
+                    val service = AmiAccessibilityService.instance
+                    if (service == null || x == null || y == null) {
+                        result.error(
+                            "accessibility_unavailable",
+                            "Screen interaction is not available.",
+                            null
+                        )
+                    } else {
+                        service.tapAt(x, y) { success -> result.success(success) }
+                    }
+                }
+                "typeText" -> {
+                    val text = call.argument<String>("text")
+                    val service = AmiAccessibilityService.instance
+                    if (service == null || text == null) {
+                        result.error(
+                            "accessibility_unavailable",
+                            "Screen interaction is not available.",
+                            null
+                        )
+                    } else {
+                        result.success(service.typeText(text))
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun isAmiAccessibilityEnabled(): Boolean {
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ).orEmpty()
+        val serviceName = ComponentName(
+            this,
+            AmiAccessibilityService::class.java
+        ).flattenToString()
+        return enabledServices
+            .split(':')
+            .any { it.equals(serviceName, ignoreCase = true) }
     }
 
     private fun setupOverlayChannel(flutterEngine: FlutterEngine) {
@@ -217,6 +299,7 @@ class MainActivity : FlutterActivity() {
         }
         screenChannel = null
         overlayChannel = null
+        accessibilityChannel = null
         super.onDestroy()
     }
 }
