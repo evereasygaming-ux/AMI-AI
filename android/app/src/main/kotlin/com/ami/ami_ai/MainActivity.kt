@@ -184,7 +184,7 @@ class MainActivity : FlutterActivity() {
             "display" -> Settings.ACTION_DISPLAY_SETTINGS
             "sound" -> Settings.ACTION_SOUND_SETTINGS
             "location" -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
-            "notifications" -> Settings.ACTION_NOTIFICATION_SETTINGS
+            "notifications" -> Settings.ACTION_APP_NOTIFICATION_SETTINGS
             "apps" -> Settings.ACTION_APPLICATION_SETTINGS
             "battery" -> Settings.ACTION_BATTERY_SAVER_SETTINGS
             "accessibility" -> Settings.ACTION_ACCESSIBILITY_SETTINGS
@@ -193,6 +193,9 @@ class MainActivity : FlutterActivity() {
         }
         return try {
             val intent = Intent(action)
+            if (page == "notifications") {
+                intent.putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+            }
             startActivity(intent)
             true
         } catch (_: Throwable) {
