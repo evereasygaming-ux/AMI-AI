@@ -16,6 +16,7 @@ class AmiSettings {
     this.floatingRobot = false,
     this.accessibilityConsent = false,
     this.screenActionConsent = false,
+    this.deviceActionsConsent = false,
     this.screenNodeStreamConsent = false,
   });
 
@@ -33,6 +34,7 @@ class AmiSettings {
   final bool floatingRobot;
   final bool accessibilityConsent;
   final bool screenActionConsent;
+  final bool deviceActionsConsent;
   final bool screenNodeStreamConsent;
 
   bool get hasApiKey => switch (provider) {
@@ -58,6 +60,7 @@ class AmiSettings {
     bool? floatingRobot,
     bool? accessibilityConsent,
     bool? screenActionConsent,
+    bool? deviceActionsConsent,
     bool? screenNodeStreamConsent,
   }) => AmiSettings(
     apiKey: apiKey ?? this.apiKey,
@@ -74,6 +77,7 @@ class AmiSettings {
     floatingRobot: floatingRobot ?? this.floatingRobot,
     accessibilityConsent: accessibilityConsent ?? this.accessibilityConsent,
     screenActionConsent: screenActionConsent ?? this.screenActionConsent,
+    deviceActionsConsent: deviceActionsConsent ?? this.deviceActionsConsent,
     screenNodeStreamConsent:
         screenNodeStreamConsent ?? this.screenNodeStreamConsent,
   );
@@ -94,6 +98,7 @@ class SettingsService {
   static const _kFloatingRobot = 'ami_floating_robot';
   static const _kAccessibilityConsent = 'ami_accessibility_consent';
   static const _kScreenActionConsent = 'ami_screen_action_consent';
+  static const _kDeviceActionsConsent = 'ami_device_actions_consent';
   static const _kScreenNodeStreamConsent = 'ami_screen_node_stream_consent';
 
   Future<AmiSettings> load() async {
@@ -114,6 +119,7 @@ class SettingsService {
       floatingRobot: prefs.getBool(_kFloatingRobot) ?? false,
       accessibilityConsent: prefs.getBool(_kAccessibilityConsent) ?? false,
       screenActionConsent: prefs.getBool(_kScreenActionConsent) ?? false,
+      deviceActionsConsent: prefs.getBool(_kDeviceActionsConsent) ?? false,
       screenNodeStreamConsent:
           prefs.getBool(_kScreenNodeStreamConsent) ?? false,
     );
@@ -141,6 +147,7 @@ class SettingsService {
     await prefs.setBool(_kFloatingRobot, settings.floatingRobot);
     await prefs.setBool(_kAccessibilityConsent, settings.accessibilityConsent);
     await prefs.setBool(_kScreenActionConsent, settings.screenActionConsent);
+    await prefs.setBool(_kDeviceActionsConsent, settings.deviceActionsConsent);
     await prefs.setBool(
       _kScreenNodeStreamConsent,
       settings.screenNodeStreamConsent,

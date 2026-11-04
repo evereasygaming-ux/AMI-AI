@@ -101,6 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       floatingRobot: _floatingRobot,
       accessibilityConsent: widget.controller.settings.accessibilityConsent,
       screenActionConsent: widget.controller.settings.screenActionConsent,
+      deviceActionsConsent: widget.controller.settings.deviceActionsConsent,
       screenNodeStreamConsent:
           widget.controller.settings.screenNodeStreamConsent,
     );
@@ -211,6 +212,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (accepted != true || !mounted) return;
     }
     await widget.controller.setScreenNodeStreamConsent(enabled);
+  }
+
+  Future<void> _setDeviceActionsConsent(bool enabled) async {
+    if (enabled) {
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Allow AMI device actions?'),
+          content: const SingleChildScrollView(
+            child: Text(
+              'AMI can propose saving a note on this phone, scheduling a reminder, opening an installed app, or opening an Android Settings page. Each action is shown to you and runs only after you approve it. Reminder notifications require Android notification permission.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Allow actions'),
+            ),
+          ],
+        ),
+      );
+      if (accepted != true || !mounted) return;
+    }
+    await widget.controller.setDeviceActionsConsent(enabled);
   }
 
   @override
@@ -585,6 +614,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 text: 'Needs the "Display over other apps" permission. Screen reading works while screen context is on.',
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _label('DEVICE ACTIONS'),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: glassPanel(radius: 20),
+          child: SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'Allow AMI device actions',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text(
+              'Save notes, schedule reminders, launch apps, or open Settings pages. Each action needs your approval.',
+              style: TextStyle(fontSize: 10.5, color: AmiColors.muted),
+            ),
+            value: widget.controller.settings.deviceActionsConsent,
+            onChanged: _setDeviceActionsConsent,
           ),
         ),
         const SizedBox(height: 20),

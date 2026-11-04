@@ -3,12 +3,15 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'models/chat_message.dart';
+import 'models/local_note.dart';
 import 'models/screen_action.dart';
 import 'services/accessibility_bridge.dart';
 import 'services/accessibility_manager.dart';
 import 'services/cloudflare_service.dart';
+import 'services/device_action_bridge.dart';
 import 'services/gemini_service.dart';
 import 'services/groq_service.dart';
+import 'services/local_notes_service.dart';
 import 'services/overlay_service.dart';
 import 'services/screen_capture_service.dart';
 import 'services/settings_service.dart';
@@ -27,6 +30,8 @@ class AmiController extends ChangeNotifier {
     OverlayService? overlay,
     AccessibilityBridge? accessibility,
     AccessibilityManager? accessibilityManager,
+    DeviceActionBridge? deviceActions,
+    LocalNotesService? notesService,
   }) : _settingsService = settingsService ?? SettingsService(),
        _gemini = gemini ?? GeminiService(),
        _groq = groq ?? GroqService(),
@@ -35,7 +40,9 @@ class AmiController extends ChangeNotifier {
        _voice = voice ?? VoiceService(),
        _overlay = overlay ?? OverlayService(),
        _accessibility = accessibility ?? AccessibilityBridge(),
-       _accessibilityManager = accessibilityManager ?? AccessibilityManager() {
+       _accessibilityManager = accessibilityManager ?? AccessibilityManager(),
+       _deviceActions = deviceActions ?? DeviceActionBridge(),
+       _notesService = notesService ?? LocalNotesService() {
     _screen.isSharing.addListener(_onScreenChanged);
     _screen.onDelayedCaptureReady = _handleDelayedCapture;
     _overlay.onOrbTap = _handleOrbTap;
@@ -55,6 +62,8 @@ class AmiController extends ChangeNotifier {
   final OverlayService _overlay;
   final AccessibilityBridge _accessibility;
   final AccessibilityManager _accessibilityManager;
+  final DeviceActionBridge _deviceActions;
+  final LocalNotesService _notesService;
 
   AmiSettings settings = const AmiSettings();
   final List<ChatMessage> messages = [];
@@ -71,7 +80,8 @@ class AmiController extends ChangeNotifier {
   String? notice;
   int captureCountdown = 0;
   Uint8List? lastFrame;
-  ScreenAction? pendingScreenAction;
+  AssistantAction? pendingAssistantAction;
+  List<LocalNote> notes = const [];
   List<Map<String, dynamic>> screenNodes = const [];
   StreamSubscription<List<Map<String, dynamic>>>? _screenNodeSubscription;
 
@@ -97,6 +107,11 @@ class AmiController extends ChangeNotifier {
       settings = await _settingsService.load();
     } catch (_) {
       settings = const AmiSettings();
+    }
+    try {
+      notes = await _notesService.load();
+    } catch (_) {
+      notes = const [];
     }
     await refreshAccessibilityState();
     if (messages.isEmpty) {
@@ -403,6 +418,7 @@ class AmiController extends ChangeNotifier {
               screenshot: frame,
               localeHint: settings.voiceLocale,
               enableScreenActions: _canPlanScreenActions(frame),
+              enableDeviceActions: settings.deviceActionsConsent,
             )
           : settings.provider == 'groq'
           ? await _groq.generate(
@@ -412,6 +428,7 @@ class AmiController extends ChangeNotifier {
               screenshot: frame,
               localeHint: settings.voiceLocale,
               enableScreenActions: _canPlanScreenActions(frame),
+              enableDeviceActions: settings.deviceActionsConsent,
             )
           : await _gemini.generate(
               apiKey: settings.apiKey,
@@ -420,14 +437,25 @@ class AmiController extends ChangeNotifier {
               screenshot: frame,
               localeHint: settings.voiceLocale,
               enableScreenActions: _canPlanScreenActions(frame),
+              enableDeviceActions: settings.deviceActionsConsent,
             );
-      if (result.action != null) {
-        pendingScreenAction = result.action;
+      final proposedAction = result.action;
+      if (proposedAction != null && _canProposeAction(proposedAction, frame)) {
+        pendingAssistantAction = proposedAction;
         messages.add(
           ChatMessage(
             role: MessageRole.assistant,
             text: result.text.isEmpty
-                ? 'I have one screen action ready for your approval.'
+                ? 'यह कार्रवाई आपकी मंज़ूरी के लिए तैयार है।'
+                : result.text,
+          ),
+        );
+      } else if (proposedAction != null) {
+        messages.add(
+          ChatMessage(
+            role: MessageRole.assistant,
+            text: result.text.isEmpty
+                ? 'यह कार्रवाई अभी सक्षम नहीं है। सेटिंग्स में इसकी अनुमति चालू करें।'
                 : result.text,
           ),
         );
@@ -590,37 +618,59 @@ class AmiController extends ChangeNotifier {
       settings.screenActionConsent &&
       accessibilityConnected;
 
+  bool _canProposeAction(AssistantAction action, Uint8List? frame) =>
+      const {'tap_at', 'type_text'}.contains(action.name)
+      ? _canPlanScreenActions(frame)
+      : settings.deviceActionsConsent;
+
   Future<void> setScreenActionConsent(bool accepted) async {
     settings = settings.copyWith(screenActionConsent: accepted);
     await _settingsService.save(settings);
-    if (!accepted) pendingScreenAction = null;
+    if (!accepted &&
+        (pendingAssistantAction?.name == 'tap_at' ||
+            pendingAssistantAction?.name == 'type_text')) {
+      pendingAssistantAction = null;
+    }
     notifyListeners();
   }
 
-  void cancelPendingScreenAction() {
-    if (pendingScreenAction == null) return;
-    pendingScreenAction = null;
+  Future<void> setDeviceActionsConsent(bool accepted) async {
+    settings = settings.copyWith(deviceActionsConsent: accepted);
+    await _settingsService.save(settings);
+    if (!accepted &&
+        pendingAssistantAction != null &&
+        !{'tap_at', 'type_text'}.contains(pendingAssistantAction!.name)) {
+      pendingAssistantAction = null;
+    }
+    notifyListeners();
+  }
+
+  void cancelPendingAssistantAction() {
+    if (pendingAssistantAction == null) return;
+    pendingAssistantAction = null;
     messages.add(
-      ChatMessage(
-        role: MessageRole.assistant,
-        text: 'Screen action cancelled.',
-      ),
+      ChatMessage(role: MessageRole.assistant, text: 'कार्रवाई रद्द कर दी गई।'),
     );
     notifyListeners();
   }
 
-  Future<void> approvePendingScreenAction() async {
-    final action = pendingScreenAction;
+  Future<void> approvePendingAssistantAction() async {
+    final action = pendingAssistantAction;
     if (action == null ||
         _isThinking ||
-        !settings.screenActionConsent ||
-        !settings.accessibilityConsent ||
-        !accessibilityConnected) {
+        !_hasConsentForAction(action) ||
+        (const {'tap_at', 'type_text'}.contains(action.name) &&
+            (!settings.accessibilityConsent || !accessibilityConnected))) {
       return;
     }
-    pendingScreenAction = null;
+    pendingAssistantAction = null;
     _isThinking = true;
     notifyListeners();
+
+    if (!const {'tap_at', 'type_text'}.contains(action.name)) {
+      await _executeDeviceAction(action);
+      return;
+    }
 
     var succeeded = false;
     if (action.name == 'tap_at') {
@@ -654,6 +704,7 @@ class AmiController extends ChangeNotifier {
         [ChatMessage(role: MessageRole.user, text: verifyText)],
         screenshot: frame,
         enableScreenActions: false,
+        enableDeviceActions: false,
       );
       final note = result.text.isEmpty
           ? (succeeded
@@ -678,10 +729,113 @@ class AmiController extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _hasConsentForAction(AssistantAction action) =>
+      const {'tap_at', 'type_text'}.contains(action.name)
+      ? settings.screenActionConsent
+      : settings.deviceActionsConsent;
+
+  Future<void> _executeDeviceAction(AssistantAction action) async {
+    var success = false;
+    var message = 'कार्रवाई पूरी नहीं हो सकी।';
+    try {
+      switch (action.name) {
+        case 'create_note':
+          final title = action.arguments['title'];
+          final content = action.arguments['content'];
+          if (title is String &&
+              title.trim().isNotEmpty &&
+              title.length <= 160 &&
+              content is String &&
+              content.length <= 8000) {
+            await _notesService.create(title: title, content: content);
+            notes = await _notesService.load();
+            success = true;
+            message = 'नोट इस फ़ोन में सेव कर दिया।';
+          }
+          break;
+        case 'remind_after':
+          final title = action.arguments['title'];
+          final delay = action.arguments['delay_minutes'];
+          if (title is String &&
+              title.trim().isNotEmpty &&
+              title.length <= 200 &&
+              delay is num &&
+              delay.isFinite &&
+              delay == delay.roundToDouble() &&
+              delay >= 1 &&
+              delay <= 525600) {
+            final when = DateTime.now().add(Duration(minutes: delay.toInt()));
+            success = await _deviceActions.scheduleReminder(
+              title: title.trim(),
+              scheduledAt: when,
+            );
+            message = success
+                ? 'रिमाइंडर सेट कर दिया।'
+                : 'नोटिफ़िकेशन अनुमति नहीं मिली, इसलिए रिमाइंडर सेट नहीं हुआ।';
+          }
+          break;
+        case 'launch_app':
+          final appName = action.arguments['app_name'];
+          if (appName is String &&
+              appName.trim().isNotEmpty &&
+              appName.length <= 100) {
+            success = await _deviceActions.launchApp(appName.trim());
+            message = success
+                ? '${appName.trim()} ऐप खोल दिया।'
+                : 'वह ऐप नहीं मिला या उसे खोला नहीं जा सका।';
+          }
+          break;
+        case 'open_settings_page':
+          final page = action.arguments['page'];
+          if (page is String &&
+              const {
+                'wifi',
+                'bluetooth',
+                'display',
+                'sound',
+                'location',
+                'notifications',
+                'apps',
+                'battery',
+                'accessibility',
+                'language',
+              }.contains(page)) {
+            success = await _deviceActions.openSettingsPage(page);
+            message = success
+                ? 'Android सेटिंग्स का अनुरोधित पेज खोल दिया।'
+                : 'वह सेटिंग्स पेज नहीं खुल सका।';
+          }
+          break;
+      }
+    } catch (_) {
+      success = false;
+    }
+    if (success) {
+      messages.add(ChatMessage(role: MessageRole.assistant, text: message));
+      if (settings.autoSpeak) {
+        unawaited(_voice.speak(message, localeId: settings.voiceLocale));
+      }
+    } else {
+      notice = message;
+      messages.add(
+        ChatMessage(role: MessageRole.assistant, text: message, isError: true),
+      );
+    }
+    _isThinking = false;
+    notifyListeners();
+  }
+
+  Future<void> deleteNote(String id) async {
+    await _notesService.delete(id);
+    notes = await _notesService.load();
+    notifyListeners();
+  }
+
   Future<AiResponse> _generateResponse(
     List<ChatMessage> history, {
     Uint8List? screenshot,
     bool enableScreenActions = false,
+    bool enableDeviceActions = false,
   }) => settings.provider == 'cloudflare'
       ? _cloudflare.generate(
           accountId: settings.cloudflareAccountId,
@@ -691,6 +845,7 @@ class AmiController extends ChangeNotifier {
           screenshot: screenshot,
           localeHint: settings.voiceLocale,
           enableScreenActions: enableScreenActions,
+          enableDeviceActions: enableDeviceActions,
         )
       : settings.provider == 'groq'
       ? _groq.generate(
@@ -700,6 +855,7 @@ class AmiController extends ChangeNotifier {
           screenshot: screenshot,
           localeHint: settings.voiceLocale,
           enableScreenActions: enableScreenActions,
+          enableDeviceActions: enableDeviceActions,
         )
       : _gemini.generate(
           apiKey: settings.apiKey,
@@ -708,6 +864,7 @@ class AmiController extends ChangeNotifier {
           screenshot: screenshot,
           localeHint: settings.voiceLocale,
           enableScreenActions: enableScreenActions,
+          enableDeviceActions: enableDeviceActions,
         );
 
   @override

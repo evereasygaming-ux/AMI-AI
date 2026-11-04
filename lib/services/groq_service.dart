@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/chat_message.dart';
 import '../models/screen_action.dart';
+import 'assistant_action_tools.dart';
 import 'ami_system_prompt.dart';
 import 'gemini_service.dart' show GeminiException;
 
@@ -23,6 +24,7 @@ class GroqService {
     Uint8List? screenshot,
     String localeHint = 'auto',
     bool enableScreenActions = false,
+    bool enableDeviceActions = false,
   }) async {
     final key = apiKey.trim();
     if (key.isEmpty) {
@@ -31,14 +33,17 @@ class GroqService {
       );
     }
     final start = history.length > 18 ? history.length - 18 : 0;
+    final actionGuidance = [
+      if (enableScreenActions) 'When the user directly requests a screen action, propose at most one tap_at or type_text tool call. The user must approve it before execution.',
+      if (enableDeviceActions)
+        'When the user directly requests a device action, propose at most one available device action. It will run only after explicit user approval. Current local date and time: ${DateTime.now().toLocal().toIso8601String()}; UTC offset minutes: ${DateTime.now().timeZoneOffset.inMinutes}. Use this to calculate reminder delay_minutes.',
+    ].join('\n');
     final messages = <Map<String, dynamic>>[
       {
         'role': 'system',
         'content':
             AmiSystemPrompt.text +
-            (enableScreenActions
-                ? '\nWhen the user explicitly requests a screen action, propose only one tap_at or type_text tool call. Never infer actions. The app will wait for explicit approval before execution.'
-                : ''),
+            (actionGuidance.isEmpty ? '' : '\n$actionGuidance'),
       },
     ];
     for (final message in history.skip(start)) {
@@ -77,7 +82,12 @@ class GroqService {
         'temperature': 0.85,
         'max_tokens': 1200,
       };
-      if (enableScreenActions) payload['tools'] = _actionTools;
+      if (enableScreenActions || enableDeviceActions) {
+        payload['tools'] = AssistantActionTools.openAi(
+          screenActions: enableScreenActions,
+          deviceActions: enableDeviceActions,
+        );
+      }
       response = await _client
           .post(
             _endpoint,
@@ -117,7 +127,7 @@ class GroqService {
     final responseMessage =
         (data?['choices'] as List?)?.firstOrNull?['message'];
     final text = responseMessage is Map ? responseMessage['content'] : null;
-    ScreenAction? action;
+    AssistantAction? action;
     final calls = responseMessage is Map
         ? responseMessage['tool_calls'] as List?
         : null;
@@ -127,9 +137,9 @@ class GroqService {
       final name = function['name'];
       try {
         final args = jsonDecode(function['arguments'] as String) as Map;
-        if (name == 'tap_at' || name == 'type_text') {
-          action = ScreenAction(
-            name: name as String,
+        if (name is String && AssistantAction.supports(name)) {
+          action = AssistantAction(
+            name: name,
             arguments: args.map((k, v) => MapEntry('$k', v)),
           );
         }
@@ -140,36 +150,4 @@ class GroqService {
     }
     return AiResponse(text: text is String ? text.trim() : '', action: action);
   }
-
-  static const _actionTools = [
-    {
-      'type': 'function',
-      'function': {
-        'name': 'tap_at',
-        'description': 'Propose one tap on a visible control only when directly requested. x and y are normalized fractions from 0 to 1 across and down the screen.',
-        'parameters': {
-          'type': 'object',
-          'properties': {
-            'x': {'type': 'number'},
-            'y': {'type': 'number'},
-          },
-          'required': ['x', 'y'],
-        },
-      },
-    },
-    {
-      'type': 'function',
-      'function': {
-        'name': 'type_text',
-        'description': 'Propose entering exact user-requested text in the focused non-password field.',
-        'parameters': {
-          'type': 'object',
-          'properties': {
-            'text': {'type': 'string'},
-          },
-          'required': ['text'],
-        },
-      },
-    },
-  ];
 }

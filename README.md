@@ -26,6 +26,9 @@ Gemini, Groq, or Cloudflare Workers AI.
   questions about "this" or "my screen".
 - Quick delayed screen look with a countdown before capturing.
 - Chat history with a dedicated chat screen.
+- Optional device actions: save notes on the phone, schedule reminders, open an
+  installed app, or open an Android Settings page. Enable this capability in
+  Settings; each action is shown for approval before it runs.
 - Select Gemini (default), Groq, or Cloudflare Workers AI from Settings, with
   separate credentials and model settings for each provider.
 - API keys are stored locally with `shared_preferences`; requests and attached
@@ -152,6 +155,10 @@ lib/
     overlay_service.dart        Floating robot bridge
     accessibility_bridge.dart   Accessibility Service bridge
     accessibility_manager.dart  Local UI-tree EventChannel stream and controls
+    assistant_action_tools.dart Shared provider tool definitions
+    device_action_bridge.dart   App launch, Settings, and reminder bridge
+    local_notes_service.dart    On-device note storage
+    notes_screen.dart           Local notes list
     settings_service.dart       Local settings persistence
     screen_capture_service.dart Android screen capture bridge
     voice_service.dart          Speech-to-text, neural voice selection, TTS
@@ -159,7 +166,8 @@ lib/
 android/
   app/src/main/kotlin/...       MainActivity, ScreenCaptureService,
                                 FloatingOrbService, RobotOrbView,
-                                AmiAccessibilityService
+                                AmiAccessibilityService,
+                                DeviceActionReceiver
   app/build.gradle.kts          Android app configuration
 ```
 
@@ -180,6 +188,9 @@ android/
 
 - Both provider API keys are stored only on the device.
 - Chat history is kept in memory for the current session.
+- Notes and scheduled reminder details stay in app-private storage. Reminder
+  notifications require Android notification permission, and Android may defer
+  their delivery while the device is idle.
 - Screenshots are captured only while screen sharing is active and are sent only
   to whichever provider is selected as part of your request.
 - The optional accessibility bridge returns a bounded UI-node list to AMI on the

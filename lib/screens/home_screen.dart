@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../ami_controller.dart';
 import '../app_theme.dart';
+import '../widgets/action_approval_card.dart';
 import '../widgets/voice_orb.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -95,6 +96,14 @@ class HomeScreen extends StatelessWidget {
                 _NoticeCard(
                   text: controller.notice!,
                   onClose: controller.clearNotice,
+                ),
+              ],
+              if (controller.pendingAssistantAction != null) ...[
+                const SizedBox(height: 12),
+                ActionApprovalCard(
+                  action: controller.pendingAssistantAction!,
+                  onCancel: controller.cancelPendingAssistantAction,
+                  onApprove: controller.approvePendingAssistantAction,
                 ),
               ],
               if (!controller.hasApiKey) ...[

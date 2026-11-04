@@ -23,8 +23,10 @@ class MainActivity : FlutterActivity() {
         private const val OVERLAY_CHANNEL = "ami/overlay"
         private const val ACCESSIBILITY_CHANNEL = "ami/accessibility"
         private const val ACCESSIBILITY_STREAM_CHANNEL = "ami/accessibility_stream"
+        private const val DEVICE_ACTIONS_CHANNEL = "ami/device_actions"
         private const val REQUEST_PROJECTION = 7101
         private const val REQUEST_NOTIFICATIONS = 7102
+        private const val REQUEST_ACTION_NOTIFICATIONS = 7103
         const val EXTRA_ORB_ACTION = "ami_orb_action"
         const val ORB_ACTION_READ_SCREEN = "read_screen"
     }
@@ -33,6 +35,8 @@ class MainActivity : FlutterActivity() {
     private var overlayChannel: MethodChannel? = null
     private var accessibilityChannel: MethodChannel? = null
     private var pendingCaptureResult: MethodChannel.Result? = null
+    private var pendingReminderResult: MethodChannel.Result? = null
+    private var pendingReminder: Triple<String, String, Long>? = null
     private var pendingOrbAction: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,6 +104,100 @@ class MainActivity : FlutterActivity() {
 
         setupOverlayChannel(flutterEngine)
         setupAccessibilityChannel(flutterEngine)
+        setupDeviceActionsChannel(flutterEngine)
+    }
+
+    private fun setupDeviceActionsChannel(flutterEngine: FlutterEngine) {
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DEVICE_ACTIONS_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "launchApp" -> {
+                    val appName = call.argument<String>("appName").orEmpty().trim()
+                    result.success(launchInstalledApp(appName))
+                }
+                "openSettingsPage" -> {
+                    val page = call.argument<String>("page").orEmpty()
+                    result.success(openSettingsPage(page))
+                }
+                "scheduleReminder" -> {
+                    val id = call.argument<String>("id").orEmpty()
+                    val title = call.argument<String>("title").orEmpty().trim()
+                    val triggerAt = call.argument<Number>("triggerAtMillis")?.toLong()
+                    if (id.isEmpty() || title.isEmpty() || triggerAt == null ||
+                        triggerAt <= System.currentTimeMillis()
+                    ) {
+                        result.success(false)
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                        PackageManager.PERMISSION_GRANTED
+                    ) {
+                        if (pendingReminderResult != null) {
+                            result.success(false)
+                        } else {
+                            pendingReminderResult = result
+                            pendingReminder = Triple(id, title, triggerAt)
+                            requestPermissions(
+                                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                                REQUEST_ACTION_NOTIFICATIONS
+                            )
+                        }
+                    } else {
+                        DeviceReminderScheduler.schedule(this, id, title, triggerAt)
+                        result.success(true)
+                    }
+                }
+                "cancelReminder" -> {
+                    val id = call.argument<String>("id").orEmpty()
+                    DeviceReminderScheduler.cancel(this, id)
+                    result.success(id.isNotEmpty())
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun launchInstalledApp(requestedName: String): Boolean {
+        if (requestedName.isEmpty()) return false
+        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val matches = packageManager.queryIntentActivities(launcherIntent, 0).filter {
+            it.loadLabel(packageManager).toString().trim().equals(requestedName, ignoreCase = true)
+        }
+        if (matches.size != 1) return false
+        val matchingPackages = matches.map { it.activityInfo.packageName }.distinct()
+        if (matchingPackages.size != 1) return false
+        val packageName = matchingPackages.single()
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        return try {
+            startActivity(launchIntent)
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun openSettingsPage(page: String): Boolean {
+        val action = when (page) {
+            "wifi" -> Settings.ACTION_WIFI_SETTINGS
+            "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
+            "display" -> Settings.ACTION_DISPLAY_SETTINGS
+            "sound" -> Settings.ACTION_SOUND_SETTINGS
+            "location" -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
+            "notifications" -> Settings.ACTION_NOTIFICATION_SETTINGS
+            "apps" -> Settings.ACTION_APPLICATION_SETTINGS
+            "battery" -> Settings.ACTION_BATTERY_SAVER_SETTINGS
+            "accessibility" -> Settings.ACTION_ACCESSIBILITY_SETTINGS
+            "language" -> Settings.ACTION_LOCALE_SETTINGS
+            else -> return false
+        }
+        return try {
+            val intent = Intent(action)
+            startActivity(intent)
+            true
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     private fun setupAccessibilityChannel(flutterEngine: FlutterEngine) {
@@ -294,6 +392,32 @@ class MainActivity : FlutterActivity() {
             arrayOf(Manifest.permission.POST_NOTIFICATIONS),
             REQUEST_NOTIFICATIONS
         )
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_ACTION_NOTIFICATIONS) return
+
+        val result = pendingReminderResult
+        val reminder = pendingReminder
+        pendingReminderResult = null
+        pendingReminder = null
+        if (result == null || reminder == null) return
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            DeviceReminderScheduler.schedule(
+                this,
+                reminder.first,
+                reminder.second,
+                reminder.third
+            )
+            result.success(true)
+        } else {
+            result.success(false)
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

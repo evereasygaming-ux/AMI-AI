@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/chat_message.dart';
 import '../models/screen_action.dart';
+import 'assistant_action_tools.dart';
 import 'ami_system_prompt.dart';
 
 class GeminiException implements Exception {
@@ -29,6 +30,7 @@ class GeminiService {
     Uint8List? screenshot,
     String localeHint = 'auto',
     bool enableScreenActions = false,
+    bool enableDeviceActions = false,
   }) async {
     final key = apiKey.trim();
     if (key.isEmpty) {
@@ -77,15 +79,19 @@ class GeminiService {
       throw GeminiException('Say something first and I will answer.');
     }
 
+    final actionGuidance = [
+      if (enableScreenActions) 'When the user directly requests a screen action, propose at most one tap_at or type_text call. The user must approve it before execution.',
+      if (enableDeviceActions)
+        'When the user directly requests a device action, propose at most one available device action. It will run only after explicit user approval. Current local date and time: ${DateTime.now().toLocal().toIso8601String()}; UTC offset minutes: ${DateTime.now().timeZoneOffset.inMinutes}. Use this to calculate reminder delay_minutes.',
+    ].join('\n');
+
     final body = <String, dynamic>{
       'system_instruction': {
         'parts': [
           {
             'text':
                 AmiSystemPrompt.text +
-                (enableScreenActions
-                    ? '\nWhen the user explicitly requests a screen action, propose only one tap_at or type_text function call for this turn. Never propose actions from inferred intent. The app will show the exact action and wait for explicit approval.'
-                    : ''),
+                (actionGuidance.isEmpty ? '' : '\n$actionGuidance'),
           },
         ],
       },
@@ -96,47 +102,11 @@ class GeminiService {
         'topP': 0.95,
       },
     };
-    if (enableScreenActions) {
-      body['tools'] = [
-        {
-          'function_declarations': [
-            {
-              'name': 'tap_at',
-              'description': 'Propose one tap on a visible screen control, only when directly requested by the user.',
-              'parameters': {
-                'type': 'OBJECT',
-                'properties': {
-                  'x': {
-                    'type': 'NUMBER',
-                    'description':
-                        'Horizontal fraction from 0 (left) to 1 (right).',
-                  },
-                  'y': {
-                    'type': 'NUMBER',
-                    'description':
-                        'Vertical fraction from 0 (top) to 1 (bottom).',
-                  },
-                },
-                'required': ['x', 'y'],
-              },
-            },
-            {
-              'name': 'type_text',
-              'description': 'Propose entering exact user-requested text in the currently focused non-password field.',
-              'parameters': {
-                'type': 'OBJECT',
-                'properties': {
-                  'text': {
-                    'type': 'STRING',
-                    'description': 'Exact text requested by the user.',
-                  },
-                },
-                'required': ['text'],
-              },
-            },
-          ],
-        },
-      ];
+    if (enableScreenActions || enableDeviceActions) {
+      body['tools'] = AssistantActionTools.gemini(
+        screenActions: enableScreenActions,
+        deviceActions: enableDeviceActions,
+      );
     }
 
     late http.Response response;
@@ -192,15 +162,15 @@ class GeminiService {
         .join('\n')
         .trim();
 
-    ScreenAction? action;
+    AssistantAction? action;
     for (final part in parts ?? const []) {
       if (part is! Map || part['functionCall'] is! Map) continue;
       final call = part['functionCall'] as Map;
       final name = call['name'];
       final args = call['args'];
-      if ((name == 'tap_at' || name == 'type_text') && args is Map) {
-        action = ScreenAction(
-          name: name as String,
+      if (name is String && AssistantAction.supports(name) && args is Map) {
+        action = AssistantAction(
+          name: name,
           arguments: args.map((key, value) => MapEntry('$key', value)),
         );
         break;

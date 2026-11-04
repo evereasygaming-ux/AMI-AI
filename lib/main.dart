@@ -4,6 +4,7 @@ import 'ami_controller.dart';
 import 'app_theme.dart';
 import 'screens/chat_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/notes_screen.dart';
 import 'screens/settings_screen.dart';
 
 void main() {
@@ -98,10 +99,11 @@ class _AmiShellState extends State<AmiShell> {
             children: [
               HomeScreen(
                 controller: widget.controller,
-                onOpenSettings: () => _openTab(2),
+                onOpenSettings: () => _openTab(3),
                 onOpenChat: () => _openTab(1),
               ),
               ChatScreen(controller: widget.controller),
+              NotesScreen(controller: widget.controller),
               SettingsScreen(controller: widget.controller),
             ],
           ),
@@ -124,6 +126,7 @@ class _AmiNavBar extends StatelessWidget {
   static const _items = [
     (Icons.blur_on_rounded, 'Orb'),
     (Icons.chat_bubble_outline_rounded, 'Chat'),
+    (Icons.note_alt_outlined, 'Notes'),
     (Icons.tune_rounded, 'Settings'),
   ];
 
